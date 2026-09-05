@@ -25,7 +25,8 @@
     {"name": "row-note", "layout": "OpenZone_PDA/gui/layouts/oz_pda_note_row.layout", "host": "415 32"},
     {"name": "hud", "layout": "OpenZone_PDA/gui/layouts/oz_pda_hud.layout"},
     {"name": "hud-edit", "layout": "OpenZone_PDA/gui/layouts/oz_pda_hud_edit.layout"},
-    {"name": "vpp-pane", "layout": "OpenZone_PDA_VPP/gui/layouts/oz_pda_vpp_pane.layout", "host": "1000 620"},
+    {"name": "vpp-pane", "layout": "OpenZone_PDA_VPP/gui/layouts/oz_pda_vpp_pane.layout", "host": "1000 620", "fixture": "preview/vpp-pane.json",
+     "note": "generated from ui/OpenZone_PDA_VPP/oz_pda_vpp_pane.json. The host stays the whole admin window (1000x620), not the pane rectangle, so the pane sits at [0, 96] exactly where the core's own panes sit. The fixture shows the root (the layout is hidden -- the core's ShowPane opens it) and types numbers into the tuning form. Three of the seventeen tuning fields stay empty and the hardware form carries one value: all seventeen plus the show op serialise to 1143 bytes and the engine truncates a fixture JSON string above 1023, so the budget holds fourteen of them plus one Hw field at 998 bytes. HwList is empty in every still: rows of a TextListboxWidget arrive through AddItem, out of reach of add/text/show/hide/color. PdaProfBox is hidden here, as it is on the first show of the real pane"},
     {"name": "icons", "layout": "OpenZone_PDA/gui/layouts/oz_pda_icons_sheet.layout", "host": "1282 518",
      "note": "every sprite of the set, tinted accent; blank cells = the set is not registered or the texture did not load"}
   ]
