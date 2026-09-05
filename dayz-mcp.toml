@@ -14,6 +14,19 @@ name = "openzone-pda"
 # pbo: у вкладки жорстка залежність від VPP і від вкладки ядра.
 mods = ["OpenZone_PDA", "OpenZone_PDA_VPP"]
 
+# The layout generator reads its tokens from the core REPOSITORY: design tokens
+# are a platform concern, so the series keeps one palette in one place and
+# every mod that draws UI -- this one, the factions -- reads the same file
+# instead of owning a copy. Descriptions stay here (ui/OpenZone_PDA/), the
+# numbers they name come from there.
+#
+# The path is relative to this file, not absolute: `tokens` is a portable
+# key -- the loader refuses a [build] section in dayz-mcp.local.toml -- so a
+# machine path could not live in the half of the profile that is meant for
+# machine paths. Relative works for anyone who checks the series out the way
+# it is laid out, side by side under one directory.
+tokens = "../openzone-core/ui/tokens.json"
+
 [expect]
 ready_line   = "pda loaded"
 max_warnings = 0

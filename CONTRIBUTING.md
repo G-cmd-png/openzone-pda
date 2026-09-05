@@ -34,14 +34,15 @@ cannot be accepted. **GPL code in particular cannot go in.**
   with four named exceptions: `oz_pda_hud.layout`, `oz_pda_hud_edit.layout` and
   `oz_pda_hud_proxy.layout` (proportional layouts, hand-written on purpose, palette
   kept by hand) and `OpenZone_PDA_VPP/gui/layouts/oz_pda_vpp_pane.layout` (deferred
-  to phase C). Every other layout comes from `ui/OpenZone_PDA/*.json` plus
-  `ui/tokens.json`; regenerate with the MCP's `layout_build`, or
+  to phase C). Every other layout comes from `ui/OpenZone_PDA/*.json` plus the
+  shared `ui/tokens.json`; regenerate with the MCP's `layout_build`, or
   `python -m dayz_mcp.layoutgen <root> OpenZone_PDA` from the generator repo. Run
   the gallery at two sizes and in two languages before calling a UI change done.
-- **`ui/tokens.json` is the shared single source, not only this repo's input.**
-  `openzone-factions` reads it through its own `[build] tokens` to lay out the
-  faction page that shares the contacts tab (`$device.satellite`); changing a
-  token here can re-lay a page in that repository too.
+- **`ui/tokens.json` lives in `openzone-core`, not in this repository.** This
+  repo reads it through its own `[build] tokens`, and so does
+  `openzone-factions` to lay out the faction page that shares the contacts tab
+  (`$device.satellite`); changing a token there can re-lay a page in either
+  repository.
 - **Icons**: `tools/icons/make_icons.py` draws the atlas and writes the PNG and
   the `.imageset`; it does not touch `ui/OpenZone_PDA/oz_pda_icons_sheet.json`
   (the gallery sheet description), which is kept by hand and must list the same
