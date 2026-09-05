@@ -1,4 +1,4 @@
-// Hand-written (proportional layout, not generated): colours are the palette of ui/tokens.json, kept by hand.
+// Hand-written (proportional layout, not generated): colours are the palette of ui/tokens.json in openzone-core, read through this repo's [build] tokens, kept by hand.
 // Редактор розкладки HUD: затемнення, підказка, три кнопки. Прокси панелей
 // створює скрипт -- по одному на кожну панель у реєстрі.
 

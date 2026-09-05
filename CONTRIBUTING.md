@@ -30,14 +30,15 @@ cannot be accepted. **GPL code in particular cannot go in.**
   `original` is Ukrainian, `english` is English, and the twelve remaining vanilla
   columns repeat `original`; the capital Ukrainian `І` is stored as the Latin `I`
   because no Metron font draws U+0406.
-- **`OpenZone_PDA/gui/layouts/*.layout` files are generated, never hand-edited** --
-  with four named exceptions: `oz_pda_hud.layout`, `oz_pda_hud_edit.layout` and
-  `oz_pda_hud_proxy.layout` (proportional layouts, hand-written on purpose, palette
-  kept by hand) and `OpenZone_PDA_VPP/gui/layouts/oz_pda_vpp_pane.layout` (deferred
-  to phase C). Every other layout comes from `ui/OpenZone_PDA/*.json` plus the
-  shared `ui/tokens.json`; regenerate with the MCP's `layout_build`, or
-  `python -m dayz_mcp.layoutgen <root> OpenZone_PDA` from the generator repo. Run
-  the gallery at two sizes and in two languages before calling a UI change done.
+- **`OpenZone_PDA/gui/layouts/*.layout` and `OpenZone_PDA_VPP/gui/layouts/*.layout`
+  files are generated, never hand-edited** -- with three named exceptions:
+  `oz_pda_hud.layout`, `oz_pda_hud_edit.layout` and `oz_pda_hud_proxy.layout`
+  (proportional layouts, hand-written on purpose, palette kept by hand). Every
+  other layout comes from its mod's `ui/<mod>/*.json` descriptions; regenerate
+  with the MCP's `layout_build` or `python -m dayz_mcp.layoutgen <root>` from
+  the generator repo, both with no mod argument -- two mods carry descriptions
+  now. Run the gallery at two sizes and in two languages before calling a UI
+  change done.
 - **`ui/tokens.json` lives in `openzone-core`, not in this repository.** This
   repo reads it through its own `[build] tokens`, and so does
   `openzone-factions` to lay out the faction page that shares the contacts tab
