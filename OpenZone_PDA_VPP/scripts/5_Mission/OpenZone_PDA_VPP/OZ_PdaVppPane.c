@@ -1,10 +1,10 @@
-// Панель «PDA» в адмiнському вiкнi OpenZone: форма Tuning.json полями,
-// праворуч -- мiнi-вкладки HARDWARE (форма модулiв i носiїв) та PROFILES
-// (сирий JSON). Чiпляється вкладкою до вiкна ядра через modded class --
+// Панель «PDA» в адмінському вікні OpenZone: форма Tuning.json полями,
+// праворуч -- міні-вкладки HARDWARE (форма модулів і носіїв) та PROFILES
+// (сирий JSON). Чіпляється вкладкою до вікна ядра через modded class --
 // «субмод субмода»: ядро про КПК не знає, КПК доклада свою вкладку сам.
 //
-// Гарди: NO_GUI -- сервер компiлює Mission без UI; AVPPAdminTools i
-// OpenZone_VPP -- iмена класiв CfgMods (їх авто-дефайнить рушiй).
+// Гарди: NO_GUI -- сервер компілює Mission без UI; AVPPAdminTools і
+// OpenZone_VPP -- імена класів CfgMods (їх авто-дефайнить рушій).
 
 #ifdef AVPPAdminTools
 #ifdef OpenZone_VPP
@@ -15,7 +15,7 @@ modded class OZ_VppAdminMenu
     private ref OZ_PdaTuning m_PdaTun;
     private ref OZ_PdaHardwareConfig m_HwCfg;
 
-    // Рядок списку залiза -> (вид, iндекс у своєму масивi).
+    // Рядок списку заліза -> (вид, індекс у своєму масиві).
     private ref array<string> m_HwRowKind;
     private ref array<int>    m_HwRowIdx;
     private string m_HwPickedKind = "";
@@ -41,7 +41,10 @@ modded class OZ_VppAdminMenu
             return;
         }
 
-        RegisterPane("pda", "PDA", pane);
+        // Ім'я рядка підказок називає САМА панель. Без нього ядро мусило б
+        // тримати перелік чужих імен віджетів і вгадувати наш -- перебір,
+        // який панель рації вже проходила мимо.
+        RegisterPane("pda", "PDA", pane, "PdaHint");
     }
 
     override void OnPaneShown(string id)
@@ -109,8 +112,15 @@ modded class OZ_VppAdminMenu
         }
     }
 
-    // ---------------------------------------------------------- тюнiнг
+    // ---------------------------------------------------------- тюнінг
 
+    // СІМНАДЦЯТЬ ПОЛІВ ІЗ ВІСІМНАДЦЯТИ, і вісімнадцяте названо тут навмисно.
+    //
+    // Tun_GroupInviteTtlSeconds форми не має: колонка тюнінгу вже стоїть
+    // рівно по нижній край панелі (арифметика -- у примітці опису
+    // ui/OpenZone_PDA_VPP/oz_pda_vpp_pane.json), і ще один рядок виштовхнув
+    // би її за межі. Редагується воно вкладкою CONFIG адмінського вікна --
+    // тим самим сирим JSON, яким редагуються Profiles.
     private void FillTuningForm()
     {
         if (!m_PdaTun)
@@ -143,7 +153,7 @@ modded class OZ_VppAdminMenu
             return;
         }
 
-        // Правимо ЗАВАНТАЖЕНИЙ об'єкт: Version i майбутнi поля, яких форма
+        // Правимо ЗАВАНТАЖЕНИЙ об'єкт: Version і майбутні поля, яких форма
         // не знає, переживають збереження недоторканими.
         m_PdaTun.PinMaxFails         = GetEdit("Tun_PinMaxFails").ToInt();
         m_PdaTun.PinLockoutSeconds   = GetEdit("Tun_PinLockoutSeconds").ToInt();
@@ -173,7 +183,7 @@ modded class OZ_VppAdminMenu
         SendCfg("Tuning", body);
     }
 
-    // ---------------------------------------------------------- залiзо
+    // ---------------------------------------------------------- залізо
 
     private void RebuildHwList()
     {
@@ -261,10 +271,13 @@ modded class OZ_VppAdminMenu
         SetEdit("HwSpy",   "0");
         SetEdit("HwPages", "");
         SetEdit("HwMarks", "0");
+        // Носій виду не має ЗОВСІМ -- на ньому лежить стільки родів, скільки
+        // на нього записали, і SaveHwForm поле для нього не читає. Слово
+        // "markers" тут було залишком старої моделі й брехало адмінові.
         if (kind == "module")
             SetEdit("HwKind", "antenna");
         else
-            SetEdit("HwKind", "markers");
+            SetEdit("HwKind", "");
         m_HwWritable = true;
         PaintHwToggles();
         Hint("new " + kind + ": classname is the key, then SAVE");
@@ -427,7 +440,7 @@ modded class OZ_VppAdminMenu
         return outp;
     }
 
-    // ---------------------------------------------------------- ввiд
+    // ---------------------------------------------------------- ввід
 
     override bool OnItemSelected(Widget w, int x, int y, int row, int column, int oldRow, int oldColumn)
     {
