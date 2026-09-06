@@ -2296,6 +2296,7 @@ FrameWidgetClass OZ_PdaVppPane {
                   }
                  }
                 }
+                // Admin-visible data only: nothing in the drain path multiplies this into energyUsagePerSecond (config.cpp) -- the label says so because the field would otherwise promise an effect the game does not have (finding 98, task 52).
                 GridSpacerWidgetClass HRow22 {
                  visible 1
                  position 0 112
@@ -2323,7 +2324,7 @@ FrameWidgetClass OZ_PdaVppPane {
                    vexactsize 1
                    color 0.58 0.65 0.71 1
                    priority 0
-                   text "power factor"
+                   text "power (inert)"
                    font "gui/fonts/sdf_MetronBook24"
                    "exact text" 1
                    "exact text size" 13

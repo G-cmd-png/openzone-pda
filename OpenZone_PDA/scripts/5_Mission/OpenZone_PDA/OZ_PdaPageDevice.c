@@ -457,11 +457,6 @@ class OZ_PdaPageDevice : OZ_PdaPage
         Paint();
     }
 
-    OZ_PdaDeviceStatus Status()
-    {
-        return m_Status;
-    }
-
     private void Paint()
     {
         bool hasCar   = m_Status && m_Status.CarrierClass != "";
@@ -769,18 +764,6 @@ class OZ_PdaPageDevice : OZ_PdaPage
             return;
 
         OZ_Rpc.Request(OZ_PdaConst.PAGE_DEVICE, op, json);
-    }
-
-    // Один рядок прев'ю на запис: переноси -- в пробіли, хвіст -- геть.
-    private string OneLine(string text)
-    {
-        string t = text;
-        t.Replace("\n", " ");
-
-        string cut = OZ_Text.Clip(t, 96);
-        if (cut.Length() < t.Length())
-            cut += "...";
-        return cut;
     }
 
     private void PaintCarrier(OZ_PdaDeviceStatus st)

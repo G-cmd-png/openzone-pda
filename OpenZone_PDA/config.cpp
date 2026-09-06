@@ -219,8 +219,12 @@ class CfgVehicles
             // carried; the battery keeps draining, which is the intended
             // friction.
             autoSwitchOffWhenInCargo = 0;
-            // 0.5 per minute. Modules raise the effective drain through their
-            // PowerFactor; this is the bare device.
+            // 0.5 per minute, flat, whatever sits in the module bays. Each
+            // OZ_ModuleSpec.PowerFactor is admin-visible data in
+            // Hardware.json and the VPP form only -- nothing multiplies it
+            // into this rate today, so raising it does not raise the drain
+            // (finding 98, task 52; owner decision pending on whether it
+            // should).
             energyUsagePerSecond = 0.0083;
             // Stores nothing itself: it lives off the attached battery.
             energyStorageMax = 0;
