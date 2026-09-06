@@ -112,12 +112,31 @@ class OZ_PDA_Base : ItemBase
     private int  m_CrackUntil = 0;
 
     // --- тік модулів ---
-    // Базовий таймер один на пристрій; кожен модуль накопичує свій час і
-    // спрацьовує зі своїм періодом. Один таймер замість трьох -- бо таймерів
-    // стільки ж, скільки КПК на сервері, а не скільки модулів.
+    //
+    // Один таймер на пристрій, і він біжить із НАЙМЕНШИМ періодом серед
+    // поведінок прикріплених модулів -- а не з фіксованою чвертю секунди.
+    //
+    // Чверть секунди означала чотири спрацювання на секунду на КОЖНОМУ
+    // ввімкненому КПК сервера, і кожне з них робило повний обхід трьох
+    // відсіків: GetSlotIdFromString, FindAttachment, пошук профілю, пошук
+    // специфікації заліза, пошук поведінки -- щоб у 19 випадках із 20
+    // дійти до `m_ModuleAcc[i] < period` і не зробити нічого. Єдина
+    // поведінка, яка сьогодні існує, просить п'ять секунд.
+    //
+    // Нуль означає «тікати нема кому»: жоден прикріплений модуль не має
+    // поведінки з періодом. Тоді таймер СТОЇТЬ.
+    //
+    // НА КЛІЄНТІ це природно дає нуль, і в цьому друга половина правки.
+    // Ані таблиця заліза (Hardware.json читає лише сервер), ані реєстр
+    // поведінок на клієнті не заповнені, тож ForClass там не відповідає
+    // нічого -- клієнтський тік крутився вхолосту від першої версії. Мод,
+    // який захоче клієнтської роботи (звук детектора), мусить зареєструвати
+    // свою поведінку і на клієнті; тоді період порахується й тут, і таймер
+    // заведеться сам, без жодної правки цього файлу.
     private ref Timer m_ModuleTimer;
     private ref array<float> m_ModuleAcc;
-    private static const float MODULE_TICK_BASE = 0.25;
+    // Період, з яким таймер біжить ЗАРАЗ. Нуль -- таймер не заведений.
+    private float m_TickPeriod = 0;
 
     // --- лічильник невдалих спроб ---
     private ref array<string> m_FailUid;
@@ -207,6 +226,10 @@ class OZ_PDA_Base : ItemBase
         OZ_ModuleBehaviour b = OZ_PdaModules.ForClass(item.GetType());
         if (b)
             b.OnAttached(this, idx);
+
+        // Набір модулів змінився -- період теж міг: детектор на пів секунди
+        // поруч із дозиметром на десять означає пів секунди на обох.
+        ArmModuleTicks();
     }
 
     override void EEItemDetached(EntityAI item, string slot_name)
@@ -225,6 +248,10 @@ class OZ_PDA_Base : ItemBase
         OZ_ModuleBehaviour b = OZ_PdaModules.ForClass(item.GetType());
         if (b)
             b.OnDetached(this, idx);
+
+        // Вийняли останній тікаючий модуль -- таймер СТАЄ, а не крутиться
+        // далі вхолосту до вимикання приладу.
+        ArmModuleTicks();
     }
 
     private int SlotIndexOf(string slot_name)
@@ -237,23 +264,72 @@ class OZ_PDA_Base : ItemBase
         return -1;
     }
 
-    // Тікає і на сервері, і на клієнті: звук детектора мусить чути сам
-    // гравець, а це клієнтська справа. Хто саме що робить -- вирішує модуль.
-    private void StartModuleTicks()
+    // Найменший період серед поведінок прикріплених модулів. Нуль -- нікому
+    // тікати. Рахується на attach/detach і на вмиканні, а не на кожному тіку:
+    // між цими подіями відповідь не міняється.
+    private float SmallestPeriod()
     {
-        if (m_ModuleTimer && m_ModuleTimer.IsRunning())
+        float best = 0;
+
+        for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
+        {
+            string cls = OZ_ModuleClass(i);
+            if (cls == "")
+                continue;
+
+            OZ_ModuleBehaviour b = OZ_PdaModules.ForClass(cls);
+            if (!b)
+                continue;
+
+            float p = b.TickSeconds();
+            if (p <= 0)
+                continue;   // декларативний модуль, як звичайна антена
+
+            if (best <= 0 || p < best)
+                best = p;
+        }
+
+        return best;
+    }
+
+    // Завести таймер під поточний набір модулів -- або зупинити його, коли
+    // тікати нема кому. Ідемпотентна: період той самий -- нічого не робимо,
+    // інакше кожен attach скидав би відлік уже запущеного тіка.
+    private void ArmModuleTicks()
+    {
+        if (!m_IsOn)
+        {
+            StopModuleTicks();
+            return;
+        }
+
+        float want = SmallestPeriod();
+        if (want <= 0)
+        {
+            StopModuleTicks();
+            return;
+        }
+
+        if (m_ModuleTimer && m_ModuleTimer.IsRunning() && m_TickPeriod == want)
             return;
 
         if (!m_ModuleTimer)
             m_ModuleTimer = new Timer(CALL_CATEGORY_SYSTEM);
 
-        m_ModuleTimer.Run(MODULE_TICK_BASE, this, "ModuleTick", NULL, true);
+        m_ModuleTimer.Stop();
+        for (int a = 0; a < m_ModuleAcc.Count(); a++)
+            m_ModuleAcc[a] = 0;
+
+        m_TickPeriod = want;
+        m_ModuleTimer.Run(m_TickPeriod, this, "ModuleTick", NULL, true);
+        OZ_Log.Dbg("pda module tick armed at " + m_TickPeriod.ToString() + "s on " + GetType());
     }
 
     private void StopModuleTicks()
     {
         if (m_ModuleTimer)
             m_ModuleTimer.Stop();
+        m_TickPeriod = 0;
     }
 
     void ModuleTick()
@@ -281,7 +357,7 @@ class OZ_PDA_Base : ItemBase
             if (period <= 0)
                 continue;   // декларативний модуль, як антена
 
-            m_ModuleAcc[i] = m_ModuleAcc[i] + MODULE_TICK_BASE;
+            m_ModuleAcc[i] = m_ModuleAcc[i] + m_TickPeriod;
             if (m_ModuleAcc[i] < period)
                 continue;
 
@@ -298,7 +374,7 @@ class OZ_PDA_Base : ItemBase
         // Клієнт дізнається про вмикання лише звідси -- OnWorkStart до нього
         // не доходить.
         if (m_IsOn)
-            StartModuleTicks();
+            ArmModuleTicks();
         else
             StopModuleTicks();
     }
@@ -618,15 +694,9 @@ class OZ_PDA_Base : ItemBase
             // Код ставить СЕРВЕР і не каже його нікому -- зокрема й собі в
             // лог. Підібрати його не можна не тому, що він складний, а тому
             // що його не існує в жодній голові.
-            int a = Math.RandomInt(0, 10);
-            int b = Math.RandomInt(0, 10);
-            int c = Math.RandomInt(0, 10);
-            int d = Math.RandomInt(0, 10);
-
-            m_Pin  = a.ToString();
-            m_Pin += b.ToString();
-            m_Pin += c.ToString();
-            m_Pin += d.ToString();
+            m_Pin = "";
+            for (int pd = 0; pd < PIN_DIGITS; pd++)
+                m_Pin += Math.RandomInt(0, 10).ToString();
 
             m_HasPinS  = true;
             m_Unlocked = false;
@@ -872,17 +942,6 @@ class OZ_PDA_Base : ItemBase
         m_SessionEpoch = playerEpoch;
     }
 
-    // Явне закриття сесії з ЦЬОГО пристрою. Знімок навмисно НЕ чистимо:
-    // вийти з пристрою й стерти з нього все -- різні дії, і другу гравець
-    // має робити свідомо.
-    void OZ_CloseSession()
-    {
-        if (!GetGame().IsServer())
-            return;
-        m_SessionUid   = "";
-        m_SessionEpoch = 0;
-    }
-
     // -------------------------------------------------------------- знімок
 
     // Онлайн -- це коли епоха пристрою збігається з епохою гравця. Розійшлись
@@ -909,20 +968,7 @@ class OZ_PDA_Base : ItemBase
         m_SnapshotAt = OZ_Time.NowUtc();
     }
 
-    // Стерти вміст свідомо -- окрема дія, доступна тому, у кого пристрій
-    // відімкнений у руках.
-    void OZ_WipeSnapshot()
-    {
-        if (!GetGame().IsServer())
-            return;
-        if (!OZ_IsUnlocked())
-            return;
-
-        m_Snapshot   = "";
-        m_SnapshotAt = "";
-    }
-
-    // «До заводських» БЕЗ пінa: знайдений чужий КПК можна зробити своїм,
+    // «До заводських» БЕЗ піна: знайдений чужий КПК можна зробити своїм,
     // але ціна чесна -- всі дані попереднього власника згорають. Sealed
     // сюди не пускаємо: запечатане або ламають дешифратором, або носять
     // як цеглину. Чип у гнізді -- фізичний носій, його скидання не чіпає.
@@ -984,10 +1030,46 @@ class OZ_PDA_Base : ItemBase
     //
     // Невдала спроба рахується так само, як невдале відмикання: інакше
     // «зміна піна» стала б обхідним шляхом для підбору.
+    // ФОРМА КОДУ ПЕРЕВІРЯЄТЬСЯ НА СЕРВЕРІ, а не самою лише клавіатурою.
+    //
+    // Пад малює рівно чотири цифри, і чесний клієнт інакше й не пошле. Але
+    // код приїжджає рядком у RPC, і сервер брав його ЯК Є: підроблений запит
+    // ставив на прилад пін завдовжки в мегабайт або з будь-яких знаків, і
+    // після цього пад відкрити його не міг НІКОЛИ -- ані власник, ані злодій.
+    // Тобто це був однобічний спосіб зробити чужий прилад цеглиною.
+    //
+    // Порожній рядок лишається законним: це «зняти код».
+    private bool PinShaped(string pin)
+    {
+        if (pin == "")
+            return true;
+
+        if (pin.Length() != PIN_DIGITS)
+            return false;
+
+        for (int i = 0; i < PIN_DIGITS; i++)
+        {
+            int c = pin.Get(i).ToAscii();
+            if (c < 48 || c > 57)   // '0'..'9'
+                return false;
+        }
+        return true;
+    }
+
+    // Скільки цифр у коді. Те саме число, яким пад малює свої кнопки, і те
+    // саме, яким сервер сіє код запечатаного приладу.
+    static const int PIN_DIGITS = 4;
+
     bool OZ_SetPin(string uid, string oldPin, string newPin)
     {
         if (!GetGame().IsServer())
             return false;
+
+        if (!PinShaped(newPin))
+        {
+            OZ_Log.Warn("pda: refused a PIN that is not " + PIN_DIGITS.ToString() + " digits from " + uid);
+            return false;
+        }
 
         if (m_Pin != "")
         {
@@ -1040,11 +1122,22 @@ class OZ_PDA_Base : ItemBase
         m_FailAt[i]    = GetGame().GetTime();
     }
 
+    // РЯДОК ЗНИКАЄ ЦІЛКОМ, а не обнуляється.
+    //
+    // Обнулений лічильник читається так само, як відсутній запис (OZ_FailsFor
+    // на невідомому uid віддає нуль), а три паралельні масиви росли назавжди:
+    // кожен, хто хоч раз помилився кодом, лишався в предметі до кінця його
+    // життя. ВСІ ТРИ й тим самим індексом -- вони паралельні, і зняти два з
+    // трьох означало б зсунути час чужого запису (див. OZ_FactoryReset).
     private void ResetFails(string uid)
     {
         int i = m_FailUid.Find(uid);
-        if (i != -1)
-            m_FailCount[i] = 0;
+        if (i == -1)
+            return;
+
+        m_FailUid.Remove(i);
+        m_FailCount.Remove(i);
+        m_FailAt.Remove(i);
     }
 
     // Відлік автоблокування починається, коли пристрій пішов З РУК.
@@ -1065,10 +1158,15 @@ class OZ_PDA_Base : ItemBase
 
     EntityAI OZ_Attached(string slotName)
     {
-        int idx = InventorySlots.GetSlotIdFromString(slotName);
-        if (idx == -1)
+        return OZ_AttachedId(OZ_PdaSlots.Of(slotName));
+    }
+
+    // За ГОТОВИМ id -- для тих, хто в гарячому шляху й уже має число.
+    EntityAI OZ_AttachedId(int slotId)
+    {
+        if (slotId == -1)
             return null;
-        return GetInventory().FindAttachment(idx);
+        return GetInventory().FindAttachment(slotId);
     }
 
     // Класнейм модуля у відсіку i, або порожній рядок.
@@ -1082,7 +1180,7 @@ class OZ_PDA_Base : ItemBase
         if (prof && i >= prof.ModuleSlots)
             return "";
 
-        EntityAI m = OZ_Attached(OZ_PdaConst.ModuleSlot(i));
+        EntityAI m = OZ_AttachedId(OZ_PdaSlots.Module(i));
         if (!m)
             return "";
 
@@ -1113,23 +1211,6 @@ class OZ_PDA_Base : ItemBase
         return false;
     }
 
-    // Сумарний множник витрати живлення від усіх вставлених модулів.
-    float OZ_PowerFactor()
-    {
-        float f = 1.0;
-        for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
-        {
-            string cls = OZ_ModuleClass(i);
-            if (cls == "")
-                continue;
-
-            OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
-            if (spec)
-                f *= spec.PowerFactor;
-        }
-        return f;
-    }
-
     // Ховає відсіки понад те, що дозволяє профіль. Слоти не додаються в
     // рантаймі, тому в конфізі їх максимум, а профіль ріже видиме.
     override bool CanDisplayAttachmentSlot(int slot_id)
@@ -1143,7 +1224,7 @@ class OZ_PDA_Base : ItemBase
 
         for (int i = prof.ModuleSlots; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
         {
-            if (slot_id == InventorySlots.GetSlotIdFromString(OZ_PdaConst.ModuleSlot(i)))
+            if (slot_id == OZ_PdaSlots.Module(i))
                 return false;
         }
         return true;
@@ -1151,7 +1232,7 @@ class OZ_PDA_Base : ItemBase
 
     string OZ_CarrierClass()
     {
-        EntityAI c = OZ_Attached(OZ_PdaConst.SLOT_CARRIER);
+        EntityAI c = OZ_AttachedId(OZ_PdaSlots.Carrier());
         if (!c)
             return "";
         return c.GetType();
@@ -1207,7 +1288,7 @@ class OZ_PDA_Base : ItemBase
         if (GetGame().IsServer())
         {
             PushState();
-            StartModuleTicks();
+            ArmModuleTicks();
         }
     }
 
@@ -1262,7 +1343,7 @@ class OZ_PDA_Base : ItemBase
     // тож вимкнений КПК із повною батареєю відповідав би «батареї немає».
     EntityAI OZ_Battery()
     {
-        return OZ_Attached(OZ_PdaConst.SLOT_BATTERY);
+        return OZ_AttachedId(OZ_PdaSlots.Battery());
     }
 
     bool OZ_HasBattery()
@@ -1286,7 +1367,7 @@ class OZ_PDA_Base : ItemBase
         if (!GetGame().IsServer())
             return true;
 
-        if (slotId != InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_BATTERY))
+        if (slotId != OZ_PdaSlots.Battery())
             return true;
 
         OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
@@ -1494,6 +1575,5 @@ class OZ_PDA_Base : ItemBase
 
         // Обмін контактами -- теж дія, і теж по цілі: наводиш на людину.
         AddAction(OZ_ActionExchangeContacts);
-        AddAction(OZ_ActionOpenPda);
     }
 }

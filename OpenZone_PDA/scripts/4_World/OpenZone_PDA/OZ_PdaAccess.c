@@ -252,7 +252,7 @@ class OZ_PdaLookup
         GameInventory inv = player.GetInventory();
         if (inv)
         {
-            int slotId = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_WEAR);
+            int slotId = OZ_PdaSlots.Wear();
             if (slotId != -1)
             {
                 OZ_PDA_Base worn = OZ_PDA_Base.Cast(inv.FindAttachment(slotId));

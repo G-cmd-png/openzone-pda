@@ -461,27 +461,13 @@ class OZ_PdaHud
     // без жодного запиту -- пристрій той самий.
     static OZ_PDA_Base Device()
     {
-        PlayerBase p = PlayerBase.Cast(GetGame().GetPlayer());
-        if (!p)
-            return null;
-
-        // НАДЕТИЙ виграє: він -- робочий термінал на грудях, а в руках може
-        // бути чужий трофей, який лише роздивляються. Худ не має права
-        // перескочити на нього (рішення власника 2026-08-28). Руки --
-        // запасний варіант, коли слот носіння порожній.
-        GameInventory inv = p.GetInventory();
-        if (inv)
-        {
-            int slotId = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_WEAR);
-            if (slotId != -1)
-            {
-                OZ_PDA_Base worn = OZ_PDA_Base.Cast(inv.FindAttachment(slotId));
-                if (worn)
-                    return worn;
-            }
-        }
-
-        return OZ_PDA_Base.Cast(p.GetItemInHands());
+        // ОДНЕ ПРАВИЛО НА ВЕСЬ МОД, і воно живе в OZ_PdaLookup.
+        //
+        // Тут стояла ДРУГА копія «надітий, потім руки» -- слово в слово те
+        // саме, що робить HeldByPlayer, -- і саме через дві копії худ і
+        // сервер уже раз розійшлися: комент над однією обіцяв «руки, потім
+        // слот», а робила вона навпаки. Тепер копія одна.
+        return OZ_PdaLookup.HeldByPlayer(PlayerBase.Cast(GetGame().GetPlayer()));
     }
 
     // Два числа з пакета синхронізації ядра (D87). Посилка маячків їх теж
