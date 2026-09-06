@@ -93,6 +93,10 @@ class OZ_PdaPageFactory
         s_Sprite.Set(OZ_PdaConst.PAGE_NEWS,     "tab_news");
     }
 
+    // ВХІД ДЛЯ ЧУЖОГО МОДА, і поки що ним ніхто не скористався: вкладки
+    // фракцій і рації малюються запасним "tab_page", хоч набір oz_pda_icons
+    // уже несе tab_faction і tab_radio. Виправляють це склейки, у своїх
+    // репозиторіях (записано у звіті задачі 52), а не цей файл.
     static void Sprite(string pageId, string image)
     {
         SeedSprites();
@@ -170,12 +174,6 @@ class OZ_PdaPageFactory
             return "";
 
         return s_Pair.Get(pageId);
-    }
-
-    static bool Has(string pageId)
-    {
-        Ensure();
-        return s_Map.Contains(pageId);
     }
 
     static OZ_PdaPage Make(string pageId)

@@ -87,7 +87,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     // Ворота доступу безкоштовні: ці опи не входять у винятки живлення й
     // замка, тож OZ_PdaAccess вже вимагає ввімкнений і відімкнений пристрій.
 
-    // Прилад гравця, з тією ж перевіркою, що й у CarrierOf.
+    // Прилад гравця, з тією ж перевіркою, що й у OZ_CarrierOps.
     //
     // Шість місць у операціях носія брали прилад ПОВТОРНО -- рядком
     // `OZ_PdaLookup.HeldBy(sender)` без жодної перевірки -- і одразу його
@@ -104,22 +104,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         return pda;
     }
 
-    private OZ_DataCarrier_Base CarrierOf(PlayerIdentity sender, out string error)
-    {
-        OZ_PDA_Base pda = DeviceOf(sender, error);
-        if (!pda)
-            return null;
-
-        OZ_DataCarrier_Base c = OZ_DataCarrier_Base.Cast(pda.OZ_Attached(OZ_PdaConst.SLOT_CARRIER));
-        if (!c)
-        {
-            error = "STR_OZ_ERR_NO_CARRIER";
-            return null;
-        }
-
-        return c;
-    }
-
     private string CarrierWrite(string json, PlayerIdentity sender, out bool ok, out string error)
     {
         ok = false;
@@ -132,7 +116,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             return "";
         }
 
-        OZ_DataCarrier_Base c = CarrierOf(sender, error);
+        OZ_DataCarrier_Base c = OZ_CarrierOps.Resolve(sender, error);
         if (!c)
             return "";
 
@@ -281,7 +265,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_DataCarrier_Base c = CarrierOf(sender, error);
+        OZ_DataCarrier_Base c = OZ_CarrierOps.Resolve(sender, error);
         if (!c)
             return "";
 
@@ -335,7 +319,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_DataCarrier_Base c = CarrierOf(sender, error);
+        OZ_DataCarrier_Base c = OZ_CarrierOps.Resolve(sender, error);
         if (!c)
             return "";
 
@@ -613,7 +597,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             return "";
         }
 
-        OZ_DataCarrier_Base c = CarrierOf(sender, error);
+        OZ_DataCarrier_Base c = OZ_CarrierOps.Resolve(sender, error);
         if (!c)
             return "";
 
@@ -858,7 +842,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_DataCarrier_Base c = CarrierOf(sender, error);
+        OZ_DataCarrier_Base c = OZ_CarrierOps.Resolve(sender, error);
         if (!c)
             return "";
 
@@ -1289,12 +1273,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         OZ_PdaPinAttempt att;
         string err;
@@ -1333,12 +1314,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         pda.OZ_EvaluateCrack();
 
@@ -1366,12 +1344,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
         if (!prof)
@@ -1398,12 +1373,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         OZ_PdaPinChange ch;
         string err;
@@ -1436,12 +1408,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         if (pda.OZ_HasAnySession())
         {
@@ -1468,12 +1437,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         string uid = sender.GetPlainId();
         OZ_PlayerData pd = OZ_PlayerStore.Load(uid);
@@ -1501,12 +1467,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         if (!pda.OZ_HasPin())
         {
@@ -1527,12 +1490,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         string why = pda.OZ_FactoryReset();
         if (why != "")
@@ -1553,12 +1513,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         OZ_PdaFlagOp flag;
         string err;
@@ -1584,12 +1541,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
+        OZ_PDA_Base pda = DeviceOf(sender, error);
         if (!pda)
-        {
-            error = "STR_OZ_ERR_NO_DEVICE";
             return "";
-        }
 
         OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
         if (!prof)

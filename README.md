@@ -38,14 +38,21 @@ Early development. Nothing is published to the Workshop yet, and the items are n
 the central economy — an admin has to spawn them.
 
 Working and exercised on a test server: the device itself (battery, power, PIN, lazy
-auto-lock), sealed quest devices opened with a decryptor on a countdown, the seven-page
-shell with a tab strip built from the device's own profile, per-device map markers,
-the contacts list with proximity-gated friend requests, notes, and the hardware
-contract that lets another mod add its own module, tab and page.
+auto-lock, factory reset), sealed quest devices opened with a decryptor on a
+countdown, the seven-page shell with a tab strip built from the device's own profile,
+per-device map markers and routes, data carriers (write, read, take one record,
+erase) with shared markers and notes moving between devices on them, the contacts
+list with the exchange done in the world by an action, notes, chat and the news feed
+through the Discord bridge, an NPC pager, the transponder with its privacy modes,
+the capsule a stolen device becomes, the HUD overlay with its movable panes, the
+admin console panel in the VPP window, and the hardware contract that lets another
+mod add its own module, tab and page.
 
-Built but not yet connected, so honestly: shared markers, module behaviours (the
-Geiger counter and dosimeter read "no data" until a mod supplies one), tiered battery
-drain, data carriers, and Discord account linking. The list under **Planned features**
+Built but not yet connected, so honestly: module behaviours beyond the spy antenna
+(the Geiger counter and dosimeter read "no data" until a mod supplies a radiation
+provider), the quest journal (it draws, and waits for a quest mod to fill it), and
+tiered battery drain. Discord account linking lives in OpenZone Core and works; the
+PDA only shows whether the account is linked. The list under **Planned features**
 describes where this is going, not what it does today.
 
 ## Licence

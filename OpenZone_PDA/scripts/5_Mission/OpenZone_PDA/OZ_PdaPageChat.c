@@ -65,16 +65,6 @@ class OZ_PdaPageChat : OZ_PdaPage
 
     private string m_OpenId = "";
 
-    // Куди перейти при відкритті. Ставить сторінка «Контакти», коли гравець
-    // натиснув там «написати»: інакше довелось би тримати другий список
-    // контактів тут, і два списки про те саме розійшлися б.
-    private static string s_Wanted = "";
-
-    static void WantChatWith(string chatId)
-    {
-        s_Wanted = chatId;
-    }
-
     override string LayoutPath()
     {
         return "OpenZone_PDA/gui/layouts/oz_pda_page_chat.layout";
@@ -125,12 +115,6 @@ class OZ_PdaPageChat : OZ_PdaPage
             m_Input.SetText(pending);
             SetHintSticky("ChatHint", "#STR_OZ_CHAT_MARK_HINT");
         }
-        if (s_Wanted != "")
-        {
-            m_OpenId = s_Wanted;
-            s_Wanted = "";
-        }
-
         RequestList();
         RequestOpen();
     }
@@ -852,18 +836,6 @@ class OZ_PdaPageChat : OZ_PdaPage
 
     // Час у людському вигляді.
     //
-    // На проводі -- ISO UTC ("2026-08-25T16:47:37.079Z"), і саме так воно й
-    // світилось на екрані: двадцять чотири символи машинного часу поруч із
-    // трьома словами повідомлення. Для розмови треба знати день і годину, а
-    // не мілісекунди й часовий пояс.
-    //
-    // Ріжемо за позиціями, а не парсимо: формат задає міст, він сталий, і
-    // розбирати дату заради двох чисел -- це чотири нових способи помилитись.
-    private string Stamp(string iso)
-    {
-        return OZ_LocalTime.Stamp(iso);
-    }
-
     private void ClearLines()
     {
         for (int i = 0; i < m_LineRows.Count(); i++)
@@ -926,7 +898,10 @@ class OZ_PdaPageChat : OZ_PdaPage
 
         TextWidget at = TextWidget.Cast(w.FindAnyWidget("LineAt"));
         if (at)
-            at.SetText(Stamp(l.At));
+            // На проводі -- ISO UTC ("2026-08-25T16:47:37.079Z"); OZ_LocalTime
+            // ріже його до дня й години. Обгортка Stamp() над одним викликом
+            // додавала лише ще одне ім'я для того самого.
+            at.SetText(OZ_LocalTime.Stamp(l.At));
 
         TextWidget text = TextWidget.Cast(w.FindAnyWidget("LineText"));
         if (text)

@@ -48,8 +48,12 @@ cannot be accepted. **GPL code in particular cannot go in.**
   the `.imageset`; it does not touch `ui/OpenZone_PDA/oz_pda_icons_sheet.json`
   (the gallery sheet description), which is kept by hand and must list the same
   sprite names.
-- **No hard dependency beyond Community Framework.** Anything else is an optional
-  provider behind an `#ifdef` plus a runtime probe, with a working fallback.
+- **No hard dependency beyond Community Framework and OpenZone Core.** Those two are
+  in `requiredAddons` by design — without the core the game refuses to load the PDA
+  at all, and that is the platform decision of 2026-09-01, not an oversight.
+  Everything else is an optional provider behind an `#ifdef` plus a runtime probe,
+  with a working fallback; VPP in particular is reached only from the separate
+  `OpenZone_PDA_VPP` pbo, which is why the PDA itself never mentions it.
 - **Never identify an item by inheritance from our own class.** Item classnames come
   from JSON so that admins can point the mod at items from any mod.
 - Every `.ps1` file must be saved as **UTF-8 with BOM**, or Windows PowerShell 5.1

@@ -920,56 +920,27 @@ class OZ_PdaMenu : UIScriptedMenu
 
         ButtonWidget crack = ButtonWidget.Cast(layoutRoot.FindAnyWidget("BtnCrack"));
         Widget pad = layoutRoot.FindAnyWidget("LockPad");
-
-        if (!st.Sealed)
-        {
-            // Звичайний замкнений КПК: код і панель як були, але з
-            // дешифратором у гнізді замок ламається й тут (рішення власника
-            // 2026-08-28) -- DECRYPT стоїть під падом, поруч зі скиданням.
-            if (pad)
-                pad.Show(true);
-
-            TextWidget hintP = TextWidget.Cast(layoutRoot.FindAnyWidget("LockHint"));
-
-            if (st.Cracking)
-            {
-                if (crack)
-                    crack.Show(false);
-                if (hintP)
-                {
-                    string leftP = "#STR_OZ_CRACKING";
-                    leftP += "   " + st.CrackLeftSec.ToString() + " s";
-                    hintP.SetText(leftP);
-                }
-                return;
-            }
-
-            if (crack)
-            {
-                crack.Show(st.HasDecryptor);
-                if (st.HasDecryptor)
-                {
-                    TextWidget ctP = TextWidget.Cast(layoutRoot.FindAnyWidget("BtnCrackText"));
-                    if (ctP)
-                        ctP.SetText("#STR_OZ_CRACK");
-                }
-            }
-            return;
-        }
-
-        if (pad)
-            pad.Show(false);
-
-        TextWidget label = TextWidget.Cast(layoutRoot.FindAnyWidget("LockLabel"));
-        if (label)
-            label.SetText("#STR_OZ_SEALED");
-
-        TextWidget dots = TextWidget.Cast(layoutRoot.FindAnyWidget("LockDots"));
-        if (dots)
-            dots.SetText("");
-
         TextWidget hint = TextWidget.Cast(layoutRoot.FindAnyWidget("LockHint"));
 
+        // ПАД ХОВАЄ ЛИШЕ ПЕЧАТКА: у запечатаного коду не набирають, його
+        // ламають. Звичайний замкнений КПК лишається з клавіатурою, а
+        // DECRYPT стоїть під нею (рішення власника 2026-08-28).
+        if (pad)
+            pad.Show(!st.Sealed);
+
+        if (st.Sealed)
+        {
+            TextWidget label = TextWidget.Cast(layoutRoot.FindAnyWidget("LockLabel"));
+            if (label)
+                label.SetText("#STR_OZ_SEALED");
+
+            TextWidget dots = TextWidget.Cast(layoutRoot.FindAnyWidget("LockDots"));
+            if (dots)
+                dots.SetText("");
+        }
+
+        // ВІДЛІК ЗЛАМУ -- ОДИН НА ОБИДВА СТАНИ. Гілка «йде злам» стояла
+        // двічі, слово в слово: раз для запечатаного, раз для звичайного.
         if (st.Cracking)
         {
             if (crack)
@@ -983,24 +954,27 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
         }
 
-        if (!st.HasDecryptor)
-        {
-            if (crack)
-                crack.Show(false);
-            if (hint)
-                hint.SetText("#STR_OZ_SEALED_NEED");
-            return;
-        }
-
         if (crack)
         {
-            crack.Show(true);
-            TextWidget ct = TextWidget.Cast(layoutRoot.FindAnyWidget("BtnCrackText"));
-            if (ct)
-                ct.SetText("#STR_OZ_CRACK");
+            crack.Show(st.HasDecryptor);
+            if (st.HasDecryptor)
+            {
+                TextWidget ct = TextWidget.Cast(layoutRoot.FindAnyWidget("BtnCrackText"));
+                if (ct)
+                    ct.SetText("#STR_OZ_CRACK");
+            }
         }
+
+        // Підказка про потрібну плату -- лише в запечатаного: у звичайного
+        // замкненого є пад, і сказати йому «потрібен дешифратор» означало б
+        // порадити не той шлях.
         if (hint)
-            hint.SetText("");
+        {
+            if (st.Sealed && !st.HasDecryptor)
+                hint.SetText("#STR_OZ_SEALED_NEED");
+            else if (st.Sealed)
+                hint.SetText("");
+        }
     }
 
     void EndPin()

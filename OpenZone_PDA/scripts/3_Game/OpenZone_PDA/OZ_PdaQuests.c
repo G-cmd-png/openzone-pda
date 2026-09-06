@@ -12,28 +12,29 @@
 // Постачальник рівно один: два журнали в одному пристрої -- це знову дві
 // правди. Другий Bind перезаписує перший і каже про це в лог.
 
+// ДОГОВІР -- РІВНО ТЕ, ЩО СТОРІНКА МАЛЮЄ, і ні поля більше.
+//
+// Тут стояло ще п'ять: Objective.Current/Total («зібрано 3 з 5»),
+// Entry.Summary, Entry.Giver і Entry.Position («показати на карті»). Жодне з
+// них журнал не малював, постачальника, який їх заповнив би, не існує, а
+// договір, що обіцяє поле й нічого з ним не робить, -- це обіцянка, яку
+// перший же квестовий мод виконає й не побачить результату.
+//
+// Коли такий мод з'явиться, поле повертається РАЗОМ із рядком, який його
+// малює: інакше воно знову лишиться словом у заголовку.
 class OZ_QuestObjective
 {
     string Text     = "";
     bool   Done     = false;
-    // Необов'язковий лічильник: «зібрано 3 з 5». Обидва нулі -- лічильника
-    // немає й малювати його не треба.
-    int    Current  = 0;
-    int    Total    = 0;
 }
 
 class OZ_QuestEntry
 {
     string Id       = "";
     string Title    = "";
-    string Summary  = "";
     // "active" | "done" | "failed". Рядком, а не числом: журнал показує це
     // гравцеві, а мод-постачальник не мусить знати наших констант.
     string State    = "active";
-    string Giver    = "";
-    // Порожній рядок означає «місце невідоме» -- на карті нічого не малюємо.
-    // Формат той самий, що в грі: "x y z".
-    string Position = "";
     ref array<ref OZ_QuestObjective> Objectives;
 
     void OZ_QuestEntry()
@@ -85,18 +86,6 @@ class OZ_PdaQuests
         }
         s_Provider = provider;
         OZ_Log.Info("quest provider: " + provider.Name());
-    }
-
-    static bool HasProvider()
-    {
-        return s_Provider != null;
-    }
-
-    static string ProviderName()
-    {
-        if (!s_Provider)
-            return "";
-        return s_Provider.Name();
     }
 
     static OZ_QuestJournal Collect(PlayerIdentity who)
