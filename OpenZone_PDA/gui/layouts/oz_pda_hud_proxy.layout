@@ -40,13 +40,20 @@ FrameWidgetClass OZ_HudProxy {
    style rover_sim_colorable
   }
 
+  // ВІДСТУП ЧАСТКОЮ, А НЕ ПІКСЕЛЯМИ. Було `position 8 0` (точні одиниці) при
+  // `size 1 1` (частка від рамки): віджет лишався завширшки з рамку й вилазив
+  // за неї рівно на ці 8 одиниць при БУДЬ-ЯКОМУ її розмірі -- «заповнити з
+  // відступом» так не робиться (gui-layouts §24). Скрипт тут не допоміг би:
+  // рамку він розмірює частками екрана, а піксельний SetSize вимагав би зробити
+  // підпис exact-size, і в галереї сама розкладка все одно лишалась би битою.
+  // Тепер відступ -- 4 % рамки з кожного боку: підпис ліворуч, вліз завжди.
   TextWidgetClass ProxyLabel {
    visible 1
    ignorepointer 1
-   position 8 0
-   size 1 1
-   hexactpos 1
-   vexactpos 1
+   position 0.04 0
+   size 0.92 1
+   hexactpos 0
+   vexactpos 0
    hexactsize 0
    vexactsize 0
    color 0.9 0.93 0.95 1

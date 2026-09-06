@@ -1,0 +1,6 @@
+{
+  "note": "One HUD panel's proxy as the layout editor makes it: the frame the player drags, the accent bar and the panel's caption. OZ_HudEditMenu writes the pane's own label into ProxyLabel and the pane's labels ARE stringtable keys (OZ_PdaHud.Adopt: #STR_OZ_HUD_PANE_TOAST, #STR_OZ_HUD_PANE_MINI), so the fixture writes the key and not a ready phrase -- the caption is then translated in a language round exactly as it is in the editor.",
+  "ops": [
+    {"op": "text", "name": "ProxyLabel", "nth": 1, "text": "#STR_OZ_HUD_PANE_TOAST"}
+  ]
+}
