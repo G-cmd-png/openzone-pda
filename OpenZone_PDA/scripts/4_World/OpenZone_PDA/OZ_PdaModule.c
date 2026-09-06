@@ -1492,7 +1492,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         return "";
     }
 
-    // «До заводських» без пінa -- переініціалізація знайденого пристрою.
+    // «До заводських» без піна -- переініціалізація знайденого пристрою.
     // Дані попереднього власника згорають чесно й повністю; Sealed
     // відмовляє всередині предмета.
     private string FactoryReset(PlayerIdentity sender, out bool ok, out string error)

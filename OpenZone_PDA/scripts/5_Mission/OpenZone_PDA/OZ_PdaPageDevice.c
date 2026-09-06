@@ -340,8 +340,8 @@ class OZ_PdaPageDevice : OZ_PdaPage
             }
             else
             {
-                // Частковий iмпорт -- НЕ "Done.": скiльки взято проти
-                // скiльки лежало, i рiзниця досi на чипi.
+                // Частковий імпорт -- НЕ "Done.": скільки взято проти
+                // скільки лежало, і різниця досі на чипі.
                 OZ_CarrierTaken t;
                 string terr;
                 if (JsonFileLoader<OZ_CarrierTaken>.LoadData(json, t, terr) && t && t.Taken < t.Total)
@@ -824,9 +824,9 @@ class OZ_PdaPageDevice : OZ_PdaPage
             line += parts;
         }
 
-        // SetHint, НЕ SetText: результат опа над носiєм липкий, а цей рядок
+        // SetHint, НЕ SetText: результат опа над носієм липкий, а цей рядок
         // перемальовується щосекунди -- прямий запис з'їдав його до того, як
-        // око встигало прочитати. Рiвно та хвороба, яку лiкує HINT_HOLD_MS.
+        // око встигало прочитати. Рівно та хвороба, яку лікує HINT_HOLD_MS.
         SetHint("CarrierText", line);
     }
 
