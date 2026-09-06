@@ -873,25 +873,28 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         // ВЛАСНИКА. На захопленому чужому терміналі (а він працює як термінал
         // власника -- рішення власника 2026-08-28) список показував своїх
         // друзів, і кожен вибір із нього повертав «не ваш контакт».
+        // Peek відповідає null для акаунта, якого сервер не бачив -- а Load,
+        // якого цей виклик замінив, тут завжди давав дефолтний запис із
+        // порожнім Friends. Порожній перелік запрошених -- та сама відповідь,
+        // не внутрішня помилка: невідомий акаунт просто нікого не встиг
+        // додати в друзі.
         OZ_PlayerData me = OZ_PlayerStore.Peek(m_Acc);
-        if (!me)
-        {
-            error = "STR_OZ_ERR_PDA_INTERNAL";
-            return "";
-        }
 
         OZ_ChatInvitees inv = new OZ_ChatInvitees();
-        for (int i = 0; i < me.Friends.Count(); i++)
+        if (me)
         {
-            // Заморожених у переліку немає: покликати нікуди. Вони просто
-            // не з'являються серед тих, кого можна додати, -- рівно як
-            // будь-хто, кого сервер не знає на ім'я.
-            if (!OZ_PlayerStore.IsLive(me.Friends[i]))
-                continue;
+            for (int i = 0; i < me.Friends.Count(); i++)
+            {
+                // Заморожених у переліку немає: покликати нікуди. Вони просто
+                // не з'являються серед тих, кого можна додати, -- рівно як
+                // будь-хто, кого сервер не знає на ім'я.
+                if (!OZ_PlayerStore.IsLive(me.Friends[i]))
+                    continue;
 
-            OZ_PlayerData d = OZ_PlayerStore.Peek(OZ_PlayerStore.UidOfKey(me.Friends[i]));
-            if (d && d.Name != "")
-                inv.Names.Insert(d.Name);
+                OZ_PlayerData d = OZ_PlayerStore.Peek(OZ_PlayerStore.UidOfKey(me.Friends[i]));
+                if (d && d.Name != "")
+                    inv.Names.Insert(d.Name);
+            }
         }
 
         string outJson;

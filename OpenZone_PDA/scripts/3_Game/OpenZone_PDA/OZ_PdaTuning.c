@@ -143,6 +143,17 @@ class OZ_PdaTuning : OZ_ConfigBase
         warnings += ClampMin("MarkerNameMaxBytes", MarkerNameMaxBytes, 4);
         warnings += ClampMin("MarkerDescMaxBytes", MarkerDescMaxBytes, 4);
 
+        // Ці п'ять їдуть у SanitizeString ПЕРЕД OZ_Text.Clip, а vanilla
+        // SanitizeString сама ріже на 512 байтах наосліп, посеред UTF-8
+        // символу (finding 152). Без стелі тут адмін, що підняв поле вище
+        // 512, повертає той самий баг для цього поля -- тому стеля та сама,
+        // 512.
+        warnings += ClampMax("ChatTitleMaxBytes", ChatTitleMaxBytes, 512);
+        warnings += ClampMax("ChatDescMaxBytes", ChatDescMaxBytes, 512);
+        warnings += ClampMax("NoteTitleMaxBytes", NoteTitleMaxBytes, 512);
+        warnings += ClampMax("MarkerNameMaxBytes", MarkerNameMaxBytes, 512);
+        warnings += ClampMax("MarkerDescMaxBytes", MarkerDescMaxBytes, 512);
+
         warnings += ClampMin("ChatHistoryOpen", ChatHistoryOpen, 1);
         warnings += ClampMin("ChatHistoryPage", ChatHistoryPage, 1);
         warnings += ClampMin("ChatGroupMax", ChatGroupMax, 0);
