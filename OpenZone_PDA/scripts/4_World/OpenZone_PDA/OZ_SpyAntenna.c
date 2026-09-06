@@ -10,11 +10,6 @@ class OZ_Module_SpyAntenna : ItemBase
     // від спеки (стеля відома лише конфігові).
     private float m_SpyLeftS = -1;
 
-    float OZ_SpyLeftS()
-    {
-        return m_SpyLeftS;
-    }
-
     // Списати dt секунд. true -- ресурс щойно скінчився.
     bool OZ_SpyDrain(float dt, float defaultS)
     {

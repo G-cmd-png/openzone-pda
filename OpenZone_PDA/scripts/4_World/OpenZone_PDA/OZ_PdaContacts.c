@@ -256,10 +256,11 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         for (int ni = 0; ni < me.NpcContacts.Count(); ni++)
         {
             string tag = me.NpcContacts[ni];
-            if (tag.IndexOf("npc:") != 0)
+            string npcId = OZ_PdaNpc.IdOf(tag);
+            if (npcId == "")
                 continue;
 
-            string npcName = OZ_PdaNpc.NameOf(tag.Substring(4, tag.Length() - 4));
+            string npcName = OZ_PdaNpc.NameOf(npcId);
             if (npcName == "")
                 continue;
 
@@ -487,9 +488,9 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         // гарантовано відмовляла -- у записнику друзів такого ключа немає.
         // NPC живуть у своєму просторі імен ("npc:<id>"), і прибирають їх
         // тим же публічним входом, яким їх додавали.
-        if (r.Key.IndexOf("npc:") == 0)
+        if (OZ_PdaNpc.IsNpcUid(r.Key))
         {
-            OZ_PdaNpc.DropContact(r.Key.Substring(4, r.Key.Length() - 4), myUid);
+            OZ_PdaNpc.DropContact(OZ_PdaNpc.IdOf(r.Key), myUid);
             ok = true;
             error = "";
             return "";

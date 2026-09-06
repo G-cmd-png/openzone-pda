@@ -47,9 +47,4 @@ class OZ_PdaClient
 
         return pda;
     }
-
-    static bool HasPdaInHands()
-    {
-        return HeldEntity() != null;
-    }
 }

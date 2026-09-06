@@ -852,8 +852,6 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         st.HasGps = true;
         if (pda)
             st.HasGps = pda.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
-        if (st.HasGps && !st.Frozen)
-            st.SelfPos = me.GetPosition().ToString(false);
         if (mine && mine.TransponderSet)
         {
             for (int ts = 0; ts < mine.TransponderSet.Count(); ts++)
@@ -1131,11 +1129,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // пишуть один рахунок, і той -- власника.
         string uid = AccountOf(sender, OZ_PdaLookup.HeldBy(sender));
         OZ_PlayerData d = OZ_PlayerStore.Load(uid);
-        if (!d.TransponderSet)
-            d.TransponderSet = new array<string>();
-        d.TransponderSet.Clear();
-        for (int w = 0; w < want.Count(); w++)
-            d.TransponderSet.Insert(want[w]);
+        // Масив ПРИСВОЮЄМО: він щойно зібраний тут і нікому більше не
+        // належить, а перекладання його по елементу в чужий -- три рядки,
+        // які роблять те саме.
+        d.TransponderSet = want;
         OZ_PlayerStore.MarkDirty(uid);
 
         ok = true;

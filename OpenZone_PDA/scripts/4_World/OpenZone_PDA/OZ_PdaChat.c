@@ -131,15 +131,30 @@ class OZ_ChatColors
 
     static void Paint(OZ_ChatLine l)
     {
-        if (!l || l.AUid == "")
+        if (!l)
             return;
-
-        // УГРУПОВАННЯ, а не базова (ТЗ-1 §5). Базова є в кожного, тож колір
-        // за нею пофарбував би весь чат в один відтінок і не сказав нічого.
-        string fac = OZ_Identity.Get().OrgOf(l.AUid);
-        if (fac != "")
-            l.WhoColor = OZ_Identity.Get().FactionColor(fac, 255);
+        l.WhoColor = ColorFor(l.AUid);
         l.AUid = "";
+    }
+
+    // ОДНЕ ПРАВИЛО НА ОБИДВА ШЛЯХИ -- історію й живий рядок.
+    //
+    // УГРУПОВАННЯ, а не базова (ТЗ-1 §5): базова є в кожного, тож колір за
+    // нею пофарбував би весь чат в один відтінок і не сказав нічого. Нуль
+    // означає «без кольору», і саме його чекає клієнт.
+    //
+    // Друга копія цього правила жила в OZ_ChatSink.Deliver, і розійтися їм
+    // не було де лише тому, що обидві написали в один день.
+    static int ColorFor(string auid)
+    {
+        if (auid == "")
+            return 0;
+
+        string fac = OZ_Identity.Get().OrgOf(auid);
+        if (fac == "")
+            return 0;
+
+        return OZ_Identity.Get().FactionColor(fac, 255);
     }
 }
 
@@ -399,14 +414,8 @@ class OZ_ChatSink : OZ_BridgeSink
             return;
         }
 
-        if (p.AUid != "")
-        {
-            // Те саме правило, що в Paint(): колір несе угруповання.
-            string pfac = OZ_Identity.Get().OrgOf(p.AUid);
-            if (pfac != "")
-                p.WhoColor = OZ_Identity.Get().FactionColor(pfac, 255);
-            p.AUid = "";
-        }
+        p.WhoColor = OZ_ChatColors.ColorFor(p.AUid);
+        p.AUid = "";
 
         string ejson;
         string eerr;
@@ -500,7 +509,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             return GroupEdit(json, sender, error);
 
         if (op == "group_del")
-            return GroupDel(json, sender, error);
+            return RefOp(json, sender, "group_del", "v1/chat/group_del", error);
 
         if (op == "group_leave")
             return RefOp(json, sender, "group_leave", "v1/chat/group_leave", error);
@@ -819,8 +828,9 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         return "";
     }
 
-    // Три операції однієї форми -- {Uid, Id} мостові, ok назад: вихід із
-    // групи і обидві відповіді на запрошення.
+    // Чотири операції однієї форми -- {Uid, Id} мостові, ok назад: видалення
+    // групи, вихід із неї та обидві відповіді на запрошення. GroupDel була
+    // копією цієї функції слово в слово, з "group_del" замість параметра.
     private string RefOp(string json, PlayerIdentity sender, string op, string route, out string error)
     {
         OZ_NoteRef r;
@@ -844,36 +854,6 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         }
 
         OZ_BridgeClient.Call(route, letter, new OZ_ChatReply(sender.GetPlainId(), op, false));
-
-        error = OZ_Const.DEFER;
-        return "";
-    }
-
-    private string GroupDel(string json, PlayerIdentity sender, out string error)
-    {
-        OZ_NoteRef r;
-        string err;
-        if (!JsonFileLoader<OZ_NoteRef>.LoadData(json, r, err) || !r || r.Id == "")
-        {
-            error = "STR_OZ_ERR_PDA_INTERNAL";
-            return "";
-        }
-
-        string uid = m_Acc;
-
-        OZ_ChatAskGroupDel a = new OZ_ChatAskGroupDel();
-        a.Uid = uid;
-        a.Id  = r.Id;
-
-        string letter;
-        if (!JsonFileLoader<OZ_ChatAskGroupDel>.MakeData(a, letter, err, false))
-        {
-            OZ_Log.Error("chat: cannot build the letter: " + err);
-            error = "STR_OZ_ERR_PDA_INTERNAL";
-            return "";
-        }
-
-        OZ_BridgeClient.Call("v1/chat/group_del", letter, new OZ_ChatReply(sender.GetPlainId(), "group_del", false));
 
         error = OZ_Const.DEFER;
         return "";

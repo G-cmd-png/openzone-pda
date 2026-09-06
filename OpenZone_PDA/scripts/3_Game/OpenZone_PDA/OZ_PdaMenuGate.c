@@ -30,11 +30,6 @@ class OZ_PdaMenuGate
             s_Inst.DoClose();
     }
 
-    static bool IsBound()
-    {
-        return s_Inst != null;
-    }
-
     // ---- «КПК без предмета» (D132) ----
     //
     // Меню одне, а приводів відкрити його два: дія на приладі й дозвіл

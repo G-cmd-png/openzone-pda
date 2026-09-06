@@ -75,17 +75,6 @@ class OZ_DataCarrier_Base : ItemBase
         return s.Records;
     }
 
-    // Які роди тут узагалі лежать. Потрібно тому, хто малює носій, не знаючи
-    // наперед, що на ньому.
-    void OZ_Kinds(out array<string> kinds)
-    {
-        kinds = new array<string>();
-        if (!m_Sections)
-            return;
-        for (int i = 0; i < m_Sections.Count(); i++)
-            kinds.Insert(m_Sections[i].Kind);
-    }
-
     bool OZ_IsWritten()
     {
         return m_Sections && m_Sections.Count() > 0;
@@ -110,18 +99,6 @@ class OZ_DataCarrier_Base : ItemBase
         if (!spec || spec.MaxRecords <= 0)
             return -1;
         return spec.MaxRecords;
-    }
-
-    int OZ_Free()
-    {
-        int max = OZ_Max();
-        if (max < 0)
-            return -1;
-
-        int free = max - OZ_Used();
-        if (free < 0)
-            free = 0;
-        return free;
     }
 
     // Скільки влізе В ЦЕЙ РІД, якщо його переписати: місце, яке зараз займає
@@ -229,7 +206,6 @@ class OZ_DataCarrier_Base : ItemBase
 
     int OZ_MarkCount()     { return OZ_Records(KIND_MARKS); }
     int OZ_NoteCount()     { return OZ_Records(KIND_NOTES); }
-    int OZ_RoutePts()      { return OZ_Records(KIND_ROUTE); }
 
     bool OZ_WriteMarks(string json, int count) { return OZ_Write(KIND_MARKS, json, count); }
     bool OZ_WriteNotes(string json, int count) { return OZ_Write(KIND_NOTES, json, count); }

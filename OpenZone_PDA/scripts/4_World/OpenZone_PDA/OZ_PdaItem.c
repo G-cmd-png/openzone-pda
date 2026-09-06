@@ -137,6 +137,8 @@ class OZ_PDA_Base : ItemBase
     private ref array<float> m_ModuleAcc;
     // Період, з яким таймер біжить ЗАРАЗ. Нуль -- таймер не заведений.
     private float m_TickPeriod = 0;
+    // Мить попереднього спрацювання, GetGame().GetTime() у мс.
+    private int m_LastTickMs = 0;
 
     // --- лічильник невдалих спроб ---
     private ref array<string> m_FailUid;
@@ -320,7 +322,8 @@ class OZ_PDA_Base : ItemBase
         for (int a = 0; a < m_ModuleAcc.Count(); a++)
             m_ModuleAcc[a] = 0;
 
-        m_TickPeriod = want;
+        m_TickPeriod  = want;
+        m_LastTickMs  = GetGame().GetTime();
         m_ModuleTimer.Run(m_TickPeriod, this, "ModuleTick", NULL, true);
         OZ_Log.Dbg("pda module tick armed at " + m_TickPeriod.ToString() + "s on " + GetType());
     }
@@ -341,6 +344,25 @@ class OZ_PDA_Base : ItemBase
             return;
         }
 
+        // ЧАС МІРЯЄМО ГОДИННИКОМ, А НЕ ПЕРІОДОМ ТАЙМЕРА.
+        //
+        // Накопичувач додавав ОГОЛОШЕНИЙ період, тобто вірив, що таймер
+        // спрацьовує рівно за розкладом. Поки період був спільною чвертю
+        // секунди, похибка ділилась на двадцять витків; тепер таймер біжить
+        // періодом самої поведінки, і кожен його зсув -- просадка сервера,
+        // затримка черги -- одразу стає похибкою В РЕСУРСІ, який поведінка
+        // списує (SpyMinutes шпигунської плати рахується саме цим dt).
+        //
+        // Годинник рушія такої помилки не має. Виміряно на стенді
+        // 2026-09-06: таймер на 5 с дає 0,199 виклику на секунду, тобто 5,03 с
+        // між витками -- саме ці 30 мс і не мусять накопичуватись.
+        int nowMs = GetGame().GetTime();
+        float elapsed = (nowMs - m_LastTickMs) / 1000.0;
+        m_LastTickMs = nowMs;
+        // Перший виток після заведення й перескок годинника -- беремо період.
+        if (elapsed <= 0 || elapsed > 60)
+            elapsed = m_TickPeriod;
+
         Man owner = Man.Cast(GetHierarchyRootPlayer());
 
         for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
@@ -357,7 +379,7 @@ class OZ_PDA_Base : ItemBase
             if (period <= 0)
                 continue;   // декларативний модуль, як антена
 
-            m_ModuleAcc[i] = m_ModuleAcc[i] + m_TickPeriod;
+            m_ModuleAcc[i] = m_ModuleAcc[i] + elapsed;
             if (m_ModuleAcc[i] < period)
                 continue;
 
@@ -1439,6 +1461,16 @@ class OZ_PDA_Base : ItemBase
             m_CrackUntil = 0;
             OZ_Log.Dbg("crack aborted: device lost power mid-crack");
         }
+
+        // ПРОКИНУВСЯ ВЖЕ УВІМКНЕНИМ -- теж привід завести тік.
+        //
+        // Тік заводив лише OnWorkStart, а рушій його при завантаженні не
+        // кличе: пристрій, який пережив рестарт сервера ввімкненим, приходить
+        // назад працюючим через OnWork, і жоден його модуль не тікав до
+        // найближчого вимикання й вмикання руками. Перехід «було вимкнено ->
+        // стало ввімкнено» ловиться саме тут, і він накриває обидва шляхи.
+        if (!wasOn && m_IsOn && GetGame().IsServer())
+            ArmModuleTicks();
 
         SetSynchDirty();
     }

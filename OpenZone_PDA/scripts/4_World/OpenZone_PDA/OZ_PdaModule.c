@@ -364,8 +364,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             if (!pda)
                 return "";
 
-            OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
-
             OZ_MarkerList mine = new OZ_MarkerList();
             string raw = pda.OZ_MarkersJson();
             if (raw != "")
@@ -475,8 +473,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_PDA_Base pdaN = DeviceOf(sender, error);
             if (!pdaN)
                 return "";
-
-            OZ_PdaProfile profN = OZ_PdaProfiles.ForClass(pdaN.GetType());
 
             OZ_NoteBook mineN = new OZ_NoteBook();
             if (pdaN.OZ_NotesJson() != "")
@@ -634,8 +630,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             if (!pda)
                 return "";
 
-            OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
-
             OZ_MarkerList mine = new OZ_MarkerList();
             string raw = pda.OZ_MarkersJson();
             if (raw != "")
@@ -714,8 +708,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_PDA_Base pdaN = DeviceOf(sender, error);
             if (!pdaN)
                 return "";
-
-            OZ_PdaProfile profN = OZ_PdaProfiles.ForClass(pdaN.GetType());
 
             OZ_NoteBook mineN = new OZ_NoteBook();
             if (pdaN.OZ_NotesJson() != "")
@@ -1149,14 +1141,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             if (cs)
             {
                 st.CarrierWritable = cs.Writable;
-                st.CarrierDisplay  = cs.DisplayName;
                 st.CarrierMaxRecords = cs.MaxRecords;
-
-                // Зайняте питаємо в САМОГО носія, а не в таблиці: таблиця
-                // знає стелю класу, скільки на ньому лежить -- лише він.
-                OZ_DataCarrier_Base held = OZ_DataCarrier_Base.Cast(pda.OZ_Attached(OZ_PdaConst.SLOT_CARRIER));
-                if (held)
-                    st.CarrierUsedRecords = held.OZ_Used();
             }
 
             // ВМІСТ чипа -- лише на УВІМКНЕНОМУ пристрої. Наявність носія
@@ -1164,7 +1149,11 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             // -- це вже читання, і мертвий КПК його не робить. Інакше
             // знайдений вимкнений прилад видавав би вміст чужого чипа тим
             // самим статусом, у якому carrier_read чесно відмовляє.
-            OZ_DataCarrier_Base carrier = OZ_DataCarrier_Base.Cast(pda.OZ_Attached(OZ_PdaConst.SLOT_CARRIER));
+            //
+            // Носій дістаємо ОДИН раз: два послідовні пошуки того самого
+            // вкладення стояли поруч, і другий питав про те, що вже знайшов
+            // перший.
+            OZ_DataCarrier_Base carrier = OZ_DataCarrier_Base.Cast(pda.OZ_AttachedId(OZ_PdaSlots.Carrier()));
             if (carrier && st.Powered)
             {
                 st.CarrierWritten = carrier.OZ_IsWritten();
@@ -1265,7 +1254,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             }
 
             st.DiscordLinked = (pd.DiscordId != "");
-            st.FirstSeen     = pd.FirstSeen;
         }
 
         // Радіацію питаємо ЛИШЕ якщо є чим міряти. Питати те, чого нема чим

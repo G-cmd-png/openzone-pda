@@ -74,11 +74,6 @@ class OZ_PdaRadiation
         OZ_Log.Info("radiation provider: " + provider.Name());
     }
 
-    static bool HasProvider()
-    {
-        return s_Provider != null;
-    }
-
     // wantAmbient / wantDose -- які прилади реально вставлені в пристрій.
     // Питати те, чого нема чим міряти, безглуздо.
     static OZ_RadiationReading Read(PlayerBase player, bool wantAmbient, bool wantDose)

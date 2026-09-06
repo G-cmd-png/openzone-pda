@@ -54,7 +54,6 @@ class OZ_PdaDeviceStatus
     ref array<ref OZ_BayInfo> Bays;
     string CarrierClass = "";
     bool   CarrierWritable = false;
-    string CarrierDisplay  = "";
     bool   CarrierWritten = false;
     // Капсула часу: вміст знімка і його дата -- лише коли пристрій офлайн.
     // Ім'я власника сесії -- завжди, коли сесія є (пристрій розімкнено).
@@ -67,7 +66,6 @@ class OZ_PdaDeviceStatus
     int    CarrierMarks = -1;
     int    CarrierNotes = -1;
     int    CarrierMaxRecords  = 0;
-    int    CarrierUsedRecords = 0;
     // Скільки одиниць на чипі; -1 -- невідомо (чужий род або старий запис).
 
     // --- замок ---
@@ -98,7 +96,6 @@ class OZ_PdaDeviceStatus
 
     // --- прив'язка ---
     bool   DiscordLinked = false;
-    string FirstSeen     = "";
 
     // --- радіація ---
     // Присилається лише якщо вставлено відповідний модуль. Від'ємне значення
@@ -210,7 +207,6 @@ class OZ_ContactEntry
     // на екрані був не відрізнити від новачка, а мітка «Механік» не давала
     // нічого й нікому. Знайдено аудитом, а не в грі.
     string Rank = "";
-    ref array<string> Posts;
     ref array<string> Traits;
 
     // Чи він у МОЄМУ УГРУПОВАННІ. Окремим полем, а не порівнянням назв:
@@ -230,7 +226,6 @@ class OZ_ContactEntry
     // цей тип серіалізують.
     void OZ_ContactEntry()
     {
-        Posts  = new array<string>();
         Traits = new array<string>();
     }
 }
@@ -303,10 +298,13 @@ class OZ_MapBeacon
     string Pos  = "";
 }
 
+// СВОЄЇ ПОЗИЦІЇ ТУТ НЕМАЄ, і це не пропуск.
+//
+// Поле SelfPos сервер заповнював у кожній відповіді, а сторінка карти брала
+// координати з ЛОКАЛЬНОЇ сутності гравця (LocalSelfPos) -- жива точка проти
+// точки п'ятисекундної давнини. Читав його ніхто, а їхало воно завжди.
 class OZ_MapState
 {
-    string SelfPos = "";
-
     // Антена -- умова і прийому, і передачі. Без неї маячків немає взагалі,
     // і це ОКРЕМИЙ стан, а не порожній список.
     bool  HasAntenna    = false;
@@ -437,6 +435,10 @@ class OZ_ChatHead
     string Id       = "";
     string Kind     = "direct";
     string Title    = "";
+    // Desc, LastAt і LastText МІСТ шле, а ця сторінка не малює. Поля
+    // лишаються описом його конверта, а не нашим навантаженням: тіло
+    // v1/chat/list іде на клієнт як є, і зняти їх звідси означало б лише
+    // перестати їх РОЗБИРАТИ, не заощадивши жодного байта.
     string Desc     = "";
     string LastAt   = "";
     string LastText = "";

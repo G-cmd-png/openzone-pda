@@ -61,21 +61,17 @@ class OZ_ModuleBehaviour
 
 class OZ_PdaModules
 {
-    private static ref map<string, ref OZ_ModuleBehaviour> s_Behaviours;
-
-    private static void Ensure()
-    {
-        if (!s_Behaviours)
-            s_Behaviours = new map<string, ref OZ_ModuleBehaviour>();
-    }
+    // Ініціалізується НА МІСЦІ. Ліниве Ensure() з трьома викликами існувало
+    // тому, що статичний `new` у декларації колись вважався ненадійним; мапа
+    // рядків на об'єкти будується без жодної залежності від рушія, і в ядрі
+    // такі мапи оголошені саме так.
+    private static ref map<string, ref OZ_ModuleBehaviour> s_Behaviours = new map<string, ref OZ_ModuleBehaviour>();
 
     // Поведінка одна на ВИД, не на класнейм: п'ять різних антен від різних
     // модів поводяться однаково, і змушувати кожного реєструватись окремо
     // означало б плодити копії того самого коду.
     static void Register(OZ_ModuleBehaviour b)
     {
-        Ensure();
-
         string kind = b.Kind();
         if (kind == "")
         {
@@ -100,7 +96,6 @@ class OZ_PdaModules
 
     static OZ_ModuleBehaviour For(string kind)
     {
-        Ensure();
         if (!s_Behaviours.Contains(kind))
             return null;
         return s_Behaviours.Get(kind);
@@ -113,11 +108,5 @@ class OZ_PdaModules
         if (!spec)
             return null;
         return For(spec.Kind);
-    }
-
-    static int Count()
-    {
-        Ensure();
-        return s_Behaviours.Count();
     }
 }

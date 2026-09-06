@@ -96,7 +96,12 @@ class OZ_Unwrap
             int tw;
             int th;
             ruler.GetTextSize(tw, th);
-            OZ_Log.Dbg("unwrap: inner=" + inner.ToString() + " tw=" + tw.ToString() + " tail=\"" + acc.Substring(Math.Max(0, acc.Length() - 9), Math.Min(9, acc.Length())) + "+" + peek + "\"");
+
+            // ДІАГНОСТИКИ ТУТ БІЛЬШЕ НЕМАЄ. Рядок Dbg стояв ВСЕРЕДИНІ петлі й
+            // друкував по запису на КОЖЕН візуальний рядок кожної відкритої
+            // записки й кожного опису мітки -- разом із хвостом самого тексту.
+            // Тобто вміст, який гравець вважає своїм, лягав у лог рівно тому,
+            // що хтось колись налагоджував перенос.
 
             if (tw <= inner)
             {

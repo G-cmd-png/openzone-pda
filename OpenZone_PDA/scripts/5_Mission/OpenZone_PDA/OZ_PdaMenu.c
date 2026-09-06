@@ -1028,16 +1028,6 @@ class OZ_PdaMenu : UIScriptedMenu
             pad.Show(true);
     }
 
-    bool PinPanelBusy()
-    {
-        return m_PinMode != "";
-    }
-
-    bool HasPin()
-    {
-        return m_HasPin;
-    }
-
     private void PaintPinPrompt(string hintKey)
     {
         TextWidget label = TextWidget.Cast(layoutRoot.FindAnyWidget("LockLabel"));

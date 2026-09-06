@@ -31,16 +31,6 @@ class OZ_PdaPage
     protected string m_StickyWidget;
     protected int    m_StickyUntil;
 
-    Widget Root()
-    {
-        return m_Root;
-    }
-
-    string PageId()
-    {
-        return m_PageId;
-    }
-
     // Перевизначає нащадок: віддає шлях до свого layout.
     string LayoutPath()
     {

@@ -45,9 +45,21 @@ class OZ_PdaNpc
         return "";
     }
 
+    // Простір імен NPC. Два місця в контактах перевіряли префікс руками, а
+    // ця пара стояла поруч без жодного виклику.
+    static const string TAG = "npc:";
+
     static bool IsNpcUid(string uid)
     {
-        return uid.IndexOf("npc:") == 0;
+        return uid.IndexOf(TAG) == 0;
+    }
+
+    // "npc:barman" -> "barman". Порожньо, якщо це не тег NPC.
+    static string IdOf(string tag)
+    {
+        if (!IsNpcUid(tag))
+            return "";
+        return tag.Substring(TAG.Length(), tag.Length() - TAG.Length());
     }
 
     // Репліка NPC гравцеві. Створює розмову роду "npc" при першому слові;
@@ -106,7 +118,7 @@ class OZ_PdaNpc
         }
 
         OZ_PlayerData d = OZ_PlayerStore.Load(playerUid);
-        string tag = "npc:" + npcId;
+        string tag = TAG + npcId;
         if (d.NpcContacts.Find(tag) == -1)
         {
             d.NpcContacts.Insert(tag);
@@ -120,7 +132,7 @@ class OZ_PdaNpc
             return;
 
         OZ_PlayerData d = OZ_PlayerStore.Load(playerUid);
-        int at = d.NpcContacts.Find("npc:" + npcId);
+        int at = d.NpcContacts.Find(TAG + npcId);
         if (at >= 0)
         {
             d.NpcContacts.Remove(at);
