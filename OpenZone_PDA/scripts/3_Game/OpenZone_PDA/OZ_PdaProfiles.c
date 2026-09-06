@@ -40,11 +40,15 @@ class OZ_PdaProfile
     ref array<string> ClassNames;
     string            DisplayName = "";
     ref array<string> Pages;
-    bool              RequiresPower    = true;
     ref array<string> BatteryClassNames;
-    float             PowerDrainPerMin = 0.5;
     ref OZ_PdaLimits  Limits;
-    string            Theme       = "stalker2";
+
+    // RequiresPower, PowerDrainPerMin, Theme і PinProtectedPages ЗНЯТІ
+    // (ревізія 2026-09-06). Усі чотири оголошувались, валідувались і не
+    // читались ніде: живлення вирішує рушійний ComponentEnergyManager,
+    // тема одна на серію (ui/tokens.json ядра), а «сторінки, що просять код
+    // ще раз» ворота OZ_PdaAccess не питали ніколи. Поле, яке обіцяє
+    // адмінові важіль і нічого не робить, гірше за відсутнє.
 
     // Скільки модульних відсіків видно на цій моделі. ГОЛОВНИЙ важіль тиру:
     // один відсік змушує вибирати між далеким зв'язком і лічильником Гейгера,
@@ -59,9 +63,6 @@ class OZ_PdaProfile
     // Сервер забороняє гравцеві вимикати автоблокування. Для серверів, де
     // залутаний КПК має лишатись цінністю, а не безкоштовним трофеєм.
     bool  ForceAutoLock    = false;
-    // Сторінки, які просять код ЩЕ РАЗ, навіть на відімкненому пристрої.
-    // Порожньо -- нічого не просить.
-    ref array<string> PinProtectedPages;
 
     // --- запечатаний пристрій ---
     //
@@ -126,7 +127,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         // Поставочні числа (ТЗ-4 R-F1.4) -- стартова точка балансу, не договір:
         // novice 25, advanced 60, sealed 10. Правляться в Profiles.json.
         p.Limits.Memory     = 25;
-        p.PinProtectedPages = new array<string>();
         Profiles.Insert(p);
 
         OZ_PdaProfile a = new OZ_PdaProfile();
@@ -152,7 +152,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         a.Limits.Memory     = 60;
         a.Limits.Friends    = 60;
         a.Limits.GroupChats = 8;
-        a.PinProtectedPages = new array<string>();
         a.ModuleSlots       = OZ_PdaConst.MODULE_SLOTS_MAX;
         a.LockAfterMinutes  = 5;
         Profiles.Insert(a);
@@ -178,7 +177,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
 
         q.Limits            = new OZ_PdaLimits();
         q.Limits.Memory     = 10;
-        q.PinProtectedPages = new array<string>();
         q.ModuleSlots       = 2;
         q.LockAfterMinutes  = 1;
         q.Sealed            = true;
@@ -205,6 +203,18 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
             Profiles = new array<ref OZ_PdaProfile>();
         if (!VirtualDevice)
             VirtualDevice = new OZ_PdaVirtualDevice();
+
+        // NULL-ЕЛЕМЕНТ -- ЗАКОННИЙ JSON, а ForClass розіменовує кожен запис
+        // на кожну операцію кожної сторінки. Викидаємо ззаду наперед і до
+        // всіх інших перевірок -- та сама причина, що в Hardware.json.
+        for (int pn = Profiles.Count() - 1; pn >= 0; pn--)
+        {
+            if (Profiles[pn])
+                continue;
+            OZ_Log.Warn("Profiles.json has a null entry in Profiles - dropped");
+            Profiles.Remove(pn);
+            warnings++;
+        }
 
         for (int i = 0; i < Profiles.Count(); i++)
         {
@@ -261,10 +271,20 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
             }
             if (!p.BatteryClassNames)
                 p.BatteryClassNames = new array<string>();
-            if (!p.PinProtectedPages)
-                p.PinProtectedPages = new array<string>();
             if (!p.PresetMarkers)
                 p.PresetMarkers = new array<ref OZ_MapMarker>();
+
+            // NULL-МІТКА В ПРЕСЕТІ -- законний JSON, і посів її розіменовує
+            // (OZ_PDA_Base.OZ_SeedFromProfile). Викидаємо тут, щоб предмет
+            // не помирав під час появи у світі.
+            for (int pm = p.PresetMarkers.Count() - 1; pm >= 0; pm--)
+            {
+                if (p.PresetMarkers[pm])
+                    continue;
+                OZ_Log.Warn("profile \"" + p.Id + "\" has a null entry in PresetMarkers - dropped");
+                p.PresetMarkers.Remove(pm);
+                warnings++;
+            }
 
             if (p.CrackSeconds < 0)
             {
@@ -328,6 +348,8 @@ class OZ_PdaProfiles
 
         for (int i = 0; i < s_Cfg.Profiles.Count(); i++)
         {
+            if (!s_Cfg.Profiles[i])
+                continue;
             array<string> names = s_Cfg.Profiles[i].ClassNames;
             for (int c = 0; names && c < names.Count(); c++)
             {

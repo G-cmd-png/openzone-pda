@@ -190,6 +190,26 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         return true;
     }
 
+    // Індекси-дублікати в переліку класнеймів, ЗЗАДУ НАПЕРЕД -- саме в тому
+    // порядку, у якому їх можна видаляти, не зсуваючи решту.
+    //
+    // Одна петля на обидва масиви: правило однакове, а два її списки жили
+    // поруч і розходилися б від першої ж правки в одному з них.
+    private void DupsBack(array<string> names, array<int> outDrop)
+    {
+        for (int d = names.Count() - 1; d >= 0; d--)
+        {
+            for (int f = 0; f < d; f++)
+            {
+                if (names[f] == names[d])
+                {
+                    outDrop.Insert(d);
+                    break;
+                }
+            }
+        }
+    }
+
     override void Validate(out int warnings)
     {
         warnings = 0;
@@ -199,33 +219,46 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         if (!Carriers)
             Carriers = new array<ref OZ_CarrierSpec>();
 
+        // NULL-ЕЛЕМЕНТ -- ЦІЛКОМ ЗАКОННИЙ JSON, і саме він валив усе далі.
+        //
+        // `"Modules": [null]` розбирається без помилки, а перша ж перевірка
+        // нижче розіменовує його -- і сервер отримує виняток не на буті, а на
+        // кожному запиті, який спитає ModuleFor. Викидаємо ззаду наперед, до
+        // будь-якої іншої перевірки: після цього ніхто в цьому файлі не мусить
+        // питати про null.
+        for (int mn = Modules.Count() - 1; mn >= 0; mn--)
+        {
+            if (Modules[mn])
+                continue;
+            OZ_Log.Warn("Hardware.json has a null entry in Modules - dropped");
+            Modules.Remove(mn);
+            warnings++;
+        }
+        for (int cn = Carriers.Count() - 1; cn >= 0; cn--)
+        {
+            if (Carriers[cn])
+                continue;
+            OZ_Log.Warn("Hardware.json has a null entry in Carriers - dropped");
+            Carriers.Remove(cn);
+            warnings++;
+        }
+
         // ДУБЛІКАТ КЛАСНЕЙМА ВІДКИДАЄМО, і кажемо про це вголос.
         //
         // Пошук завжди повертає ПЕРШИЙ запис, тож другий не працює ніколи --
         // а форма в адмінці показує його як збережений. Адмін правив другий,
         // бачив його і в списку, і у файлі, і не розумів, чому прилад
-        // поводиться по-старому. Викидаємо ззаду наперед, щоб індекси не
-        // з'їхали, і лишаємо саме перший -- той, який і працює.
-        for (int d = Modules.Count() - 1; d >= 0; d--)
+        // поводиться по-старому. Лишаємо саме перший -- той, який і працює.
+        array<string> mnames = new array<string>();
+        for (int mi = 0; mi < Modules.Count(); mi++)
+            mnames.Insert(Modules[mi].ClassName);
+
+        array<int> mdrop = new array<int>();
+        DupsBack(mnames, mdrop);
+        for (int md = 0; md < mdrop.Count(); md++)
         {
-            if (!Modules[d])
-                continue;
-
-            int firstAt = -1;
-            for (int f = 0; f < d; f++)
-            {
-                if (Modules[f] && Modules[f].ClassName == Modules[d].ClassName)
-                {
-                    firstAt = f;
-                    break;
-                }
-            }
-
-            if (firstAt == -1)
-                continue;
-
-            OZ_Log.Warn("module \"" + Modules[d].ClassName + "\" is declared twice in Hardware.json - only the first entry ever worked, the later one is dropped");
-            Modules.Remove(d);
+            OZ_Log.Warn("module \"" + mnames[mdrop[md]] + "\" is declared twice in Hardware.json - only the first entry ever worked, the later one is dropped");
+            Modules.Remove(mdrop[md]);
             warnings++;
         }
 
@@ -263,27 +296,18 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             }
         }
 
-        // Носії -- те саме правило: пошук бере перший, отже другий мертвий.
-        for (int cd = Carriers.Count() - 1; cd >= 0; cd--)
+        // Носії -- те саме правило й та сама петля: пошук бере перший, отже
+        // другий мертвий.
+        array<string> cnames = new array<string>();
+        for (int ci = 0; ci < Carriers.Count(); ci++)
+            cnames.Insert(Carriers[ci].ClassName);
+
+        array<int> cdrop = new array<int>();
+        DupsBack(cnames, cdrop);
+        for (int cx = 0; cx < cdrop.Count(); cx++)
         {
-            if (!Carriers[cd])
-                continue;
-
-            int cFirst = -1;
-            for (int cf = 0; cf < cd; cf++)
-            {
-                if (Carriers[cf] && Carriers[cf].ClassName == Carriers[cd].ClassName)
-                {
-                    cFirst = cf;
-                    break;
-                }
-            }
-
-            if (cFirst == -1)
-                continue;
-
-            OZ_Log.Warn("carrier \"" + Carriers[cd].ClassName + "\" is declared twice in Hardware.json - only the first entry ever worked, the later one is dropped");
-            Carriers.Remove(cd);
+            OZ_Log.Warn("carrier \"" + cnames[cdrop[cx]] + "\" is declared twice in Hardware.json - only the first entry ever worked, the later one is dropped");
+            Carriers.Remove(cdrop[cx]);
             warnings++;
         }
 
@@ -301,6 +325,13 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
 class OZ_PdaHardware
 {
     private static ref OZ_PdaHardwareConfig s_Cfg;
+
+    // ЧИ МОЖНА ПИСАТИ У ФАЙЛ. Load() відповідає false, коли на диску лежить
+    // єдиний примірник, якого він не зрозумів і не зміг винести в карантин.
+    // Досі відповідь ігнорувалась, і найближче чуже оголошення переписувало
+    // той файл дефолтами плюс свій модуль -- разом із усім, що адмін туди
+    // вписав. Копія ядра цього правила -- OZ_Settings.Writable().
+    private static bool s_Writable = true;
 
     // Черга чужих оголошень.
     //
@@ -344,7 +375,7 @@ class OZ_PdaHardware
     static void ServerLoad()
     {
         s_Cfg = new OZ_PdaHardwareConfig();
-        OZ_ConfigLoader<OZ_PdaHardwareConfig>.Load(OZ_PdaConst.HARDWARE, "Hardware", s_Cfg);
+        s_Writable = OZ_ConfigLoader<OZ_PdaHardwareConfig>.Load(OZ_PdaConst.HARDWARE, "Hardware", s_Cfg);
 
         // Чужі оголошення накладаємо ПІСЛЯ завантаження конфіга -- адмін
         // лишається головнішим -- і робимо це при КОЖНОМУ завантаженні, а не
@@ -362,10 +393,14 @@ class OZ_PdaHardware
         // побачити плату рації, ні перекрити її, не знаючи класнейма. Тепер
         // після кожного завантаження файл наздоганяє пам'ять; що кому
         // належить, каже Origin. Пишемо лише коли щось справді додалось.
-        if (changed)
+        if (changed && s_Writable)
         {
             OZ_ConfigLoader<OZ_PdaHardwareConfig>.Save(OZ_PdaConst.HARDWARE, "Hardware", s_Cfg);
             OZ_Log.Info("hardware: foreign module declarations written to Hardware.json");
+        }
+        else if (changed)
+        {
+            OZ_Log.Warn("hardware: Hardware.json is not writable, foreign module declarations stay in memory only");
         }
     }
 
@@ -407,7 +442,7 @@ class OZ_PdaHardware
         // ПЕРШИМ, оголошення не проходить через ServerLoad, і без цього рядка
         // файл наздогнав би пам'ять лише наступним перечитуванням.
         bool added = Insert(spec);
-        if (added)
+        if (added && s_Writable)
         {
             OZ_ConfigLoader<OZ_PdaHardwareConfig>.Save(OZ_PdaConst.HARDWARE, "Hardware", s_Cfg);
             OZ_Log.Info("hardware: a module declared after the load is written to Hardware.json: " + spec.ClassName);
@@ -475,9 +510,12 @@ class OZ_PdaHardware
         if (!s_Cfg)
             return null;
 
+        // null-guard: Validate вичищає порожні записи, але Declare теж пише
+        // в цей масив, і одне місце, де правило порушать, не має валити
+        // кожен запит статусу.
         for (int i = 0; i < s_Cfg.Modules.Count(); i++)
         {
-            if (s_Cfg.Modules[i].ClassName == cls)
+            if (s_Cfg.Modules[i] && s_Cfg.Modules[i].ClassName == cls)
                 return s_Cfg.Modules[i];
         }
         return null;
@@ -490,7 +528,7 @@ class OZ_PdaHardware
 
         for (int i = 0; i < s_Cfg.Carriers.Count(); i++)
         {
-            if (s_Cfg.Carriers[i].ClassName == cls)
+            if (s_Cfg.Carriers[i] && s_Cfg.Carriers[i].ClassName == cls)
                 return s_Cfg.Carriers[i];
         }
         return null;
