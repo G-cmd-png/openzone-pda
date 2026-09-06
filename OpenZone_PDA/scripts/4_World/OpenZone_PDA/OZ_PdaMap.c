@@ -897,6 +897,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // йому налаштували, хто б його не тримав; відповідь жертви на крадіжку
         // -- logout_others, після якого прилад стає капсулою.
         string myUid = AccountOf(sender, pda);
+        // КЛЮЧ ГЛЯДАЧА -- РАЗ НА ВИКЛИК, а не на кожного сусіда. KeyOf читає
+        // запис гравця й склеює рядок; Broadcasts кликав його всередині циклу,
+        // тобто по разу на кожного, хто стоїть у радіусі антени, п'ять разів
+        // на секунду на весь онлайн.
+        string myKey = OZ_PlayerStore.KeyOf(myUid);
 
         array<Man> near = new array<Man>();
         OZ_Spatial.PlayersInRadius(me.GetPosition(), range, near);
@@ -935,7 +940,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             // так і виглядає вкрадений живий термінал.
             OZ_PlayerData od = OZ_PlayerStore.Peek(ownerUid);
 
-            if (!Broadcasts(od, myUid))
+            if (!Broadcasts(od, myUid, myKey))
             {
                 bool silent = true;
                 if (od && od.TransponderSet && od.TransponderSet.Count() > 0)
@@ -1006,7 +1011,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // Кому цей гравець показує свою позицію. Режим -- НАБІР (ТЗ-4 R-A3.1):
     // порожній -- нікому; "public" -- усім; "contacts" і/або "faction" --
     // записнику і/або своїм по угрупованню, і досить будь-якого одного.
-    private bool Broadcasts(OZ_PlayerData them, string toUid)
+    private bool Broadcasts(OZ_PlayerData them, string toUid, string toKey)
     {
         // Порожній запис -- це «нічого про нього не знаємо», а не «веде
         // публічно»: Peek віддає null на того, чийого файлу на диску немає.
@@ -1022,7 +1027,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // життю цього акаунта, новому не дістається.
         if (them.TransponderSet.Find("contacts") != -1 && them.Friends)
         {
-            if (them.Friends.Find(OZ_PlayerStore.KeyOf(toUid)) != -1)
+            if (them.Friends.Find(toKey) != -1)
                 return true;
         }
 
