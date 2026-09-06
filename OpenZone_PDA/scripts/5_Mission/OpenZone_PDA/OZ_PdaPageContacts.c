@@ -271,14 +271,15 @@ class OZ_PdaPageContacts : OZ_PdaPage
         }
 
         string err;
-        OZ_ContactList list;
+        OZ_ContactList list = new OZ_ContactList();
         if (!JsonFileLoader<OZ_ContactList>.LoadData(json, list, err))
         {
             OZ_Log.Error("contact list unreadable: " + err);
             return;
         }
 
-        m_Data = list;
+        // Копія: вкладене виділив серіалізатор, а тримаємо ми це між кадрами.
+        m_Data = list.Copy();
         Paint();
     }
 

@@ -342,7 +342,7 @@ class OZ_PdaPageDevice : OZ_PdaPage
             {
                 // Частковий імпорт -- НЕ "Done.": скільки взято проти
                 // скільки лежало, і різниця досі на чипі.
-                OZ_CarrierTaken t;
+                OZ_CarrierTaken t = new OZ_CarrierTaken();
                 string terr;
                 if (JsonFileLoader<OZ_CarrierTaken>.LoadData(json, t, terr) && t && t.Taken < t.Total)
                     SetHintSticky("CarrierText", "#STR_OZ_DEV_CAR_PART  " + t.Taken.ToString() + "/" + t.Total.ToString());
@@ -446,14 +446,15 @@ class OZ_PdaPageDevice : OZ_PdaPage
         }
 
         string err;
-        OZ_PdaDeviceStatus st;
+        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
         if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
         {
             OZ_Log.Error("device status unreadable: " + err);
             return;
         }
 
-        m_Status = st;
+        // Копія: вкладене виділив серіалізатор, а тримаємо ми це між кадрами.
+        m_Status = st.Copy();
         Paint();
     }
 
@@ -605,7 +606,7 @@ class OZ_PdaPageDevice : OZ_PdaPage
     // з вибраним. Кольором кажемо «натисни»: то самий акцент, що в чаті.
     private void ShowCarrierPreview(string json)
     {
-        OZ_CarrierView v;
+        OZ_CarrierView v = new OZ_CarrierView();
         string err;
         if (!JsonFileLoader<OZ_CarrierView>.LoadData(json, v, err) || !v)
             return;
@@ -617,11 +618,13 @@ class OZ_PdaPageDevice : OZ_PdaPage
         m_CarSelRow = -1;
 
         // Секції приїжджають уже об'єктами -- див. коментар в OZ_CarrierView.
+        // Копія: рядок, який гравець вибере, читається ПІЗНІШЕ -- уже
+        // після того, як список побудує собі віджети.
         if (v.Marks && v.Marks.Items)
-            m_CarMarks = v.Marks;
+            m_CarMarks = v.Marks.Copy();
 
         if (v.Notes && v.Notes.Notes)
-            m_CarNotes = v.Notes;
+            m_CarNotes = v.Notes.Copy();
 
         // Шапка -- місткість: «скільки з скількох» на кожну секцію. Стеля
         // 0 означає безліміт, і тоді число стоїть саме.
@@ -850,10 +853,12 @@ class OZ_PdaPageDevice : OZ_PdaPage
             // Капсула часу: що встиг запам'ятати пристрій, поки був живим.
             if (st.Snapshot != "")
             {
-                OZ_PdaSnapshot snap;
+                OZ_PdaSnapshot snap = new OZ_PdaSnapshot();
                 string serr;
                 if (JsonFileLoader<OZ_PdaSnapshot>.LoadData(st.Snapshot, snap, serr) && snap)
                 {
+                    // Копія: нижче все читається через склейки рядків.
+                    snap = snap.Copy();
                     s += "\n#STR_OZ_DEV_SNAP_OWNER " + snap.Owner;
                     // ОБИДВІ осі в дужках, через кому: «(Сталкер, Долг)».
                     // Показати саму лише організацію означало б, що одинак

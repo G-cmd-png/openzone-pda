@@ -846,7 +846,7 @@ class OZ_PDA_Base : ItemBase
 
         if (m_MarkersJson != "")
         {
-            OZ_MarkerList marks;
+            OZ_MarkerList marks = new OZ_MarkerList();
             string e1;
             if (JsonFileLoader<OZ_MarkerList>.LoadData(m_MarkersJson, marks, e1) && marks && marks.Items)
                 n += marks.Items.Count();
@@ -854,7 +854,7 @@ class OZ_PDA_Base : ItemBase
 
         if (m_NotesJson != "")
         {
-            OZ_NoteBook book;
+            OZ_NoteBook book = new OZ_NoteBook();
             string e2;
             if (JsonFileLoader<OZ_NoteBook>.LoadData(m_NotesJson, book, e2) && book && book.Notes)
                 n += book.Notes.Count();

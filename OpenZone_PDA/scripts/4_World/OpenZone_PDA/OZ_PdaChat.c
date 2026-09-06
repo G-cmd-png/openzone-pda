@@ -115,7 +115,7 @@ class OZ_ChatColors
 {
     static string EnrichView(string json)
     {
-        OZ_ChatView v;
+        OZ_ChatView v = new OZ_ChatView();
         string err;
         if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, err) || !v || !v.Lines)
             return json;
@@ -366,7 +366,7 @@ class OZ_ChatReply : OZ_BridgeReply
         if (!to)
             return;
 
-        OZ_ChatFail fail;
+        OZ_ChatFail fail = new OZ_ChatFail();
         string err;
         if (JsonFileLoader<OZ_ChatFail>.LoadData(json, fail, err) && fail && fail.Error != "")
         {
@@ -406,7 +406,7 @@ class OZ_ChatSink : OZ_BridgeSink
 {
     override void Deliver(string json)
     {
-        OZ_ChatPush p;
+        OZ_ChatPush p = new OZ_ChatPush();
         string err;
         if (!JsonFileLoader<OZ_ChatPush>.LoadData(json, p, err) || !p)
         {
@@ -553,7 +553,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string Open(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatRef r;
+        OZ_ChatRef r = new OZ_ChatRef();
         string err;
         if (!JsonFileLoader<OZ_ChatRef>.LoadData(json, r, err) || !r)
         {
@@ -585,7 +585,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string Older(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatOlderReq r;
+        OZ_ChatOlderReq r = new OZ_ChatOlderReq();
         string err;
         if (!JsonFileLoader<OZ_ChatOlderReq>.LoadData(json, r, err) || !r || r.Id == "")
         {
@@ -620,7 +620,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string Send(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatSend s;
+        OZ_ChatSend s = new OZ_ChatSend();
         string err;
         if (!JsonFileLoader<OZ_ChatSend>.LoadData(json, s, err) || !s)
         {
@@ -687,7 +687,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string Start(string json, PlayerIdentity sender, out string error)
     {
-        OZ_NameRef r;
+        OZ_NameRef r = new OZ_NameRef();
         string err;
         if (!JsonFileLoader<OZ_NameRef>.LoadData(json, r, err) || !r)
         {
@@ -752,7 +752,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string GroupNew(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatGroupSpec r;
+        OZ_ChatGroupSpec r = new OZ_ChatGroupSpec();
         string err;
         if (!JsonFileLoader<OZ_ChatGroupSpec>.LoadData(json, r, err) || !r)
         {
@@ -798,7 +798,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string GroupEdit(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatGroupSpec r;
+        OZ_ChatGroupSpec r = new OZ_ChatGroupSpec();
         string err;
         if (!JsonFileLoader<OZ_ChatGroupSpec>.LoadData(json, r, err) || !r || r.Id == "")
         {
@@ -833,7 +833,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
     // копією цієї функції слово в слово, з "group_del" замість параметра.
     private string RefOp(string json, PlayerIdentity sender, string op, string route, out string error)
     {
-        OZ_NoteRef r;
+        OZ_NoteRef r = new OZ_NoteRef();
         string err;
         if (!JsonFileLoader<OZ_NoteRef>.LoadData(json, r, err) || !r || r.Id == "")
         {
@@ -912,7 +912,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
     private string GroupAdd(string json, PlayerIdentity sender, out string error)
     {
-        OZ_ChatAdd add;
+        OZ_ChatAdd add = new OZ_ChatAdd();
         string err;
         if (!JsonFileLoader<OZ_ChatAdd>.LoadData(json, add, err) || !add)
         {

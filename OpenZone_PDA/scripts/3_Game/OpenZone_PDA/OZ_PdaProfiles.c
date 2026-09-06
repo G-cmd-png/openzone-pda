@@ -32,6 +32,23 @@ class OZ_PdaLimits
     int Memory     = 0;
     int Friends    = 20;
     int GroupChats = 2;
+
+    // Копія в об'єкт, який зробив скрипт (шапка OZ_ConfigBase ядра).
+    //
+    // Ключ, якого У ФАЙЛІ НЕМАЄ, копія переносить нулем, а не двадцяткою з
+    // ініціалізатора, -- і це тут НЕ біда, бо нуль у цих двох полів уже має
+    // значення: OZ_PdaContactSwap.Full() читає Friends <= 0 як «стелі
+    // немає», а GroupChats їде до моста тим самим числом. Перевизначати їх
+    // у Validate означало б відібрати в адміна законне «без стелі».
+    // Memory -- інша річ, і його умовчання Validate виставляє вголос.
+    OZ_PdaLimits Copy()
+    {
+        OZ_PdaLimits c = new OZ_PdaLimits();
+        c.Memory     = Memory;
+        c.Friends    = Friends;
+        c.GroupChats = GroupChats;
+        return c;
+    }
 }
 
 class OZ_PdaProfile
@@ -80,6 +97,59 @@ class OZ_PdaProfile
     // при першій появі предмета -- інакше кожен рестарт відновлював би
     // стерті гравцем мітки.
     ref array<ref OZ_MapMarker> PresetMarkers;
+
+    // s_Cfg живе весь запуск сервера, і ForClass читає ці поля на кожному
+    // запиті кожної сторінки -- через години після розбору файла.
+    OZ_PdaProfile Copy()
+    {
+        OZ_PdaProfile c = new OZ_PdaProfile();
+        c.Id               = Id;
+        c.DisplayName      = DisplayName;
+        c.ModuleSlots      = ModuleSlots;
+        c.LockAfterMinutes = LockAfterMinutes;
+        c.ForceAutoLock    = ForceAutoLock;
+        c.Sealed           = Sealed;
+        c.CrackSeconds     = CrackSeconds;
+
+        int i;
+        c.ClassNames = new array<string>();
+        if (ClassNames)
+        {
+            for (i = 0; i < ClassNames.Count(); i++)
+                c.ClassNames.Insert(ClassNames[i]);
+        }
+
+        c.Pages = new array<string>();
+        if (Pages)
+        {
+            for (i = 0; i < Pages.Count(); i++)
+                c.Pages.Insert(Pages[i]);
+        }
+
+        c.BatteryClassNames = new array<string>();
+        if (BatteryClassNames)
+        {
+            for (i = 0; i < BatteryClassNames.Count(); i++)
+                c.BatteryClassNames.Insert(BatteryClassNames[i]);
+        }
+
+        if (Limits)
+            c.Limits = Limits.Copy();
+        else
+            c.Limits = new OZ_PdaLimits();
+
+        c.PresetMarkers = new array<ref OZ_MapMarker>();
+        if (PresetMarkers)
+        {
+            for (i = 0; i < PresetMarkers.Count(); i++)
+            {
+                if (PresetMarkers[i])
+                    c.PresetMarkers.Insert(PresetMarkers[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 class OZ_PdaVirtualDevice
@@ -87,6 +157,29 @@ class OZ_PdaVirtualDevice
     bool              Enabled = false;
     ref array<string> Pages;
     ref array<string> Factions;
+
+    OZ_PdaVirtualDevice Copy()
+    {
+        OZ_PdaVirtualDevice c = new OZ_PdaVirtualDevice();
+        c.Enabled = Enabled;
+
+        int i;
+        c.Pages = new array<string>();
+        if (Pages)
+        {
+            for (i = 0; i < Pages.Count(); i++)
+                c.Pages.Insert(Pages[i]);
+        }
+
+        c.Factions = new array<string>();
+        if (Factions)
+        {
+            for (i = 0; i < Factions.Count(); i++)
+                c.Factions.Insert(Factions[i]);
+        }
+
+        return c;
+    }
 }
 
 class OZ_PdaProfilesConfig : OZ_ConfigBase
@@ -201,8 +294,26 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
 
         if (!Profiles)
             Profiles = new array<ref OZ_PdaProfile>();
+
+        // ВКЛАДЕНЕ -- У СТВОРЕНЕ СКРИПТОМ, І ДО ПЕРШОГО ЖЕ ВИДІЛЕННЯ.
+        //
+        // Лоадер кличе Validate одразу після розбору, поки читання ще чесне;
+        // усе нижче в цьому методі складає рядки попереджень і заводить
+        // масиви, а s_Cfg потім живе весь запуск сервера. Null лишаємо null:
+        // на нього нижче є своя скарга, яка й полагодить файл.
+        for (int rs = 0; rs < Profiles.Count(); rs++)
+        {
+            if (Profiles[rs])
+                Profiles.Set(rs, Profiles[rs].Copy());
+        }
+
+        // Віртуальний термінал -- окремий вкладений об'єкт. Його два списки
+        // Validate раніше не чіпав узагалі, а ворота OZ_PdaAccess ходять по
+        // них на кожній перевірці.
         if (!VirtualDevice)
             VirtualDevice = new OZ_PdaVirtualDevice();
+        else
+            VirtualDevice = VirtualDevice.Copy();
 
         // NULL-ЕЛЕМЕНТ -- ЗАКОННИЙ JSON, а ForClass розіменовує кожен запис
         // на кожну операцію кожної сторінки. Викидаємо ззаду наперед і до

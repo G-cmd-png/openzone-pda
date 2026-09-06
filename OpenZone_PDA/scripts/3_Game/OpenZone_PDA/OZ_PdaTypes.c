@@ -2,6 +2,22 @@
 //
 // Живуть у 3_Game, бо їх серіалізує сервер (4_World) і читає клієнт
 // (5_Mission) -- спільним для обох є лише цей шар.
+//
+// ------------------------------------------------------------------------
+// НАВІЩО ТУТ Copy() (зміряно 2026-09-06, persistence-networking.md; ідіома
+// -- у шапці OZ_ConfigBase ядра).
+//
+// JsonFileLoader -- обгортка над рідним JsonSerializer.ReadFromString.
+// Корінь він заповнює на місці, а от УСЕ ВКЛАДЕНЕ виділяє сам: жоден
+// скриптовий конструктор і жоден ініціалізатор поля на тих об'єктах не
+// виконується, і член, якому серіалізатор не знайшов значення, -- сира
+// пам'ять. Одразу після розбору сторінка ще обнулена й читається правильно;
+// після НАСТУПНОГО ВИДІЛЕННЯ на тому місці лежать чужі байти.
+//
+// Конверт, який споживається в тому ж виклику, копії не потребує. Copy() тут
+// мають рівно ті типи, що переживають свій розбір: сторінки КПК тримають їх
+// у m_-полях і перемальовують з них через кадри, а HUD -- через хвилини.
+// ------------------------------------------------------------------------
 
 // Один модульний відсік, як його бачить клієнт.
 class OZ_BayInfo
@@ -11,6 +27,17 @@ class OZ_BayInfo
     string ClassName = "";     // порожньо -- відсік вільний
     string Display  = "";
     string Kind     = "";
+
+    OZ_BayInfo Copy()
+    {
+        OZ_BayInfo c = new OZ_BayInfo();
+        c.Index     = Index;
+        c.Visible   = Visible;
+        c.ClassName = ClassName;
+        c.Display   = Display;
+        c.Kind      = Kind;
+        return c;
+    }
 }
 
 // Відповідь на device/status.
@@ -110,6 +137,74 @@ class OZ_PdaDeviceStatus
     {
         Pages = new array<string>();
         Bays  = new array<ref OZ_BayInfo>();
+    }
+
+    // Сторінка пристрою тримає цей об'єкт у m_Status і читає з нього на
+    // кожному кліку кнопки живлення й автоблокування -- через кадри після
+    // розбору. Меню КПК так само будує з Pages стрічку вкладок, створюючи
+    // віджет на кожну.
+    OZ_PdaDeviceStatus Copy()
+    {
+        OZ_PdaDeviceStatus c = new OZ_PdaDeviceStatus();
+        c.ClassName   = ClassName;
+        c.ProfileId   = ProfileId;
+        c.DisplayName = DisplayName;
+        c.ModuleSlots = ModuleSlots;
+        c.Virtual     = Virtual;
+        c.InHands     = InHands;
+        c.NetLow      = NetLow;
+        c.NetHigh     = NetHigh;
+        c.Powered     = Powered;
+        c.HasBattery  = HasBattery;
+        c.Charge01    = Charge01;
+        c.CarrierClass    = CarrierClass;
+        c.CarrierWritable = CarrierWritable;
+        c.CarrierWritten  = CarrierWritten;
+        c.Snapshot   = Snapshot;
+        c.OwnerName  = OwnerName;
+        c.Owned      = Owned;
+        c.CarrierMarks = CarrierMarks;
+        c.CarrierNotes = CarrierNotes;
+        c.CarrierMaxRecords = CarrierMaxRecords;
+        c.HasPin        = HasPin;
+        c.Unlocked      = Unlocked;
+        c.AutoLock      = AutoLock;
+        c.ForceAutoLock = ForceAutoLock;
+        c.Sealed       = Sealed;
+        c.HasDecryptor = HasDecryptor;
+        c.Cracking     = Cracking;
+        c.CrackLeftSec = CrackLeftSec;
+        c.LockedOut    = LockedOut;
+        c.LockWaitS    = LockWaitS;
+        c.LockAfterMinutes = LockAfterMinutes;
+        c.Online      = Online;
+        c.SessionMine = SessionMine;
+        c.SnapshotAt  = SnapshotAt;
+        c.DiscordLinked = DiscordLinked;
+        c.HasRadiationProvider = HasRadiationProvider;
+        c.AmbientUSvH = AmbientUSvH;
+        c.DoseUSv     = DoseUSv;
+        c.DoseWarnUSv = DoseWarnUSv;
+
+        int i;
+        if (Pages)
+        {
+            for (i = 0; i < Pages.Count(); i++)
+                c.Pages.Insert(Pages[i]);
+        }
+
+        if (Bays)
+        {
+            for (i = 0; i < Bays.Count(); i++)
+            {
+                if (Bays[i])
+                    c.Bays.Insert(Bays[i].Copy());
+                else
+                    c.Bays.Insert(new OZ_BayInfo());
+            }
+        }
+
+        return c;
     }
 }
 
@@ -228,6 +323,31 @@ class OZ_ContactEntry
     {
         Traits = new array<string>();
     }
+
+    OZ_ContactEntry Copy()
+    {
+        OZ_ContactEntry c = new OZ_ContactEntry();
+        c.Name     = Name;
+        c.Key      = Key;
+        c.Me       = Me;
+        c.LastSeen = LastSeen;
+        c.Rel      = Rel;
+        c.Base     = Base;
+        c.Org      = Org;
+        c.OrgColor = OrgColor;
+        c.Online   = Online;
+        c.Near     = Near;
+        c.Rank     = Rank;
+        c.Mine     = Mine;
+
+        if (Traits)
+        {
+            for (int i = 0; i < Traits.Count(); i++)
+                c.Traits.Insert(Traits[i]);
+        }
+
+        return c;
+    }
 }
 
 // Лічильника окремим полем НЕМАЄ навмисно: він дорівнює довжині списку, а
@@ -266,6 +386,33 @@ class OZ_ContactList
     {
         Entries = new array<ref OZ_ContactEntry>();
     }
+
+    // Сторінка контактів тримає список у m_Data і читає з нього на кожному
+    // кліку рядка й на кожному перемалюванні.
+    OZ_ContactList Copy()
+    {
+        OZ_ContactList c = new OZ_ContactList();
+        c.MeHiddenZone     = MeHiddenZone;
+        c.MeHiddenContacts = MeHiddenContacts;
+        c.MeLeader         = MeLeader;
+        c.InviteFaction    = InviteFaction;
+        c.InviteFrom       = InviteFrom;
+        c.Stale            = Stale;
+        c.Frozen           = Frozen;
+
+        if (Entries)
+        {
+            for (int i = 0; i < Entries.Count(); i++)
+            {
+                if (Entries[i])
+                    c.Entries.Insert(Entries[i].Copy());
+                else
+                    c.Entries.Insert(new OZ_ContactEntry());
+            }
+        }
+
+        return c;
+    }
 }
 
 // --- сторінка «Записки» ---
@@ -280,6 +427,17 @@ class OZ_Note
     string Body      = "";
     string CreatedAt = "";
     string EditedAt  = "";
+
+    OZ_Note Copy()
+    {
+        OZ_Note c = new OZ_Note();
+        c.Id        = Id;
+        c.Title     = Title;
+        c.Body      = Body;
+        c.CreatedAt = CreatedAt;
+        c.EditedAt  = EditedAt;
+        return c;
+    }
 }
 
 class OZ_NoteRef
@@ -296,6 +454,16 @@ class OZ_MapBeacon
 {
     string Name = "";
     string Pos  = "";
+
+    // HUD тримає маячки в статику s_Beacons і малює міні-карту з них двічі
+    // на секунду -- скільки завгодно довго після розбору посилки.
+    OZ_MapBeacon Copy()
+    {
+        OZ_MapBeacon c = new OZ_MapBeacon();
+        c.Name = Name;
+        c.Pos  = Pos;
+        return c;
+    }
 }
 
 // СВОЄЇ ПОЗИЦІЇ ТУТ НЕМАЄ, і це не пропуск.
@@ -344,6 +512,56 @@ class OZ_MapState
         Markers = new array<ref OZ_MapMarker>();
         Route   = new array<ref OZ_MapMarker>();
     }
+
+    // Сторінка карти тримає стан у m_State і читає з нього все: мітки на
+    // кожному перемалюванні, маршрут -- ще й після того, як його точки
+    // поїхали в статик OZ_PdaRoute на HUD.
+    OZ_MapState Copy()
+    {
+        OZ_MapState c = new OZ_MapState();
+        c.HasAntenna      = HasAntenna;
+        c.AntennaRangeM   = AntennaRangeM;
+        c.FactionsPresent = FactionsPresent;
+        c.HasGps          = HasGps;
+        c.Frozen          = Frozen;
+        c.MarkerLimit     = MarkerLimit;
+
+        int i;
+        if (TransponderSet)
+        {
+            for (i = 0; i < TransponderSet.Count(); i++)
+                c.TransponderSet.Insert(TransponderSet[i]);
+        }
+
+        if (Beacons)
+        {
+            for (i = 0; i < Beacons.Count(); i++)
+            {
+                if (Beacons[i])
+                    c.Beacons.Insert(Beacons[i].Copy());
+            }
+        }
+
+        if (Markers)
+        {
+            for (i = 0; i < Markers.Count(); i++)
+            {
+                if (Markers[i])
+                    c.Markers.Insert(Markers[i].Copy());
+            }
+        }
+
+        if (Route)
+        {
+            for (i = 0; i < Route.Count(); i++)
+            {
+                if (Route[i])
+                    c.Route.Insert(Route[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 class OZ_TransponderOp
@@ -388,6 +606,16 @@ class OZ_MapMarker
     // читаються як порожній опис -- JsonFileLoader незнайоме поле не чіпає,
     // а відсутнє лишає замовчуванням.
     string Desc = "";
+
+    OZ_MapMarker Copy()
+    {
+        OZ_MapMarker c = new OZ_MapMarker();
+        c.Id   = Id;
+        c.Name = Name;
+        c.Pos  = Pos;
+        c.Desc = Desc;
+        return c;
+    }
 }
 
 class OZ_MarkerList
@@ -397,6 +625,23 @@ class OZ_MarkerList
     void OZ_MarkerList()
     {
         Items = new array<ref OZ_MapMarker>();
+    }
+
+    // Список міток виходить із розбору живим: LoadMarkers віддає його
+    // викликачеві, той дописує, ріже й серіалізує назад на пристрій -- усе
+    // це після нових виділень.
+    OZ_MarkerList Copy()
+    {
+        OZ_MarkerList c = new OZ_MarkerList();
+        if (Items)
+        {
+            for (int i = 0; i < Items.Count(); i++)
+            {
+                if (Items[i])
+                    c.Items.Insert(Items[i].Copy());
+            }
+        }
+        return c;
     }
 }
 
@@ -442,6 +687,18 @@ class OZ_ChatHead
     string Desc     = "";
     string LastAt   = "";
     string LastText = "";
+
+    OZ_ChatHead Copy()
+    {
+        OZ_ChatHead c = new OZ_ChatHead();
+        c.Id       = Id;
+        c.Kind     = Kind;
+        c.Title    = Title;
+        c.Desc     = Desc;
+        c.LastAt   = LastAt;
+        c.LastText = LastText;
+        return c;
+    }
 }
 
 // Запрошення до групи, яке чекає на мене. Прийняти чи відхилити --
@@ -451,6 +708,15 @@ class OZ_ChatInvite
     string Id    = "";
     string Title = "";
     string From  = "";
+
+    OZ_ChatInvite Copy()
+    {
+        OZ_ChatInvite c = new OZ_ChatInvite();
+        c.Id    = Id;
+        c.Title = Title;
+        c.From  = From;
+        return c;
+    }
 }
 
 class OZ_ChatList
@@ -465,6 +731,35 @@ class OZ_ChatList
         Items   = new array<ref OZ_ChatHead>();
         Invites = new array<ref OZ_ChatInvite>();
     }
+
+    // Сторінка чату тримає перелік у m_Heads і питає його на кожному пуші
+    // (HeadKnown) та на кожному перемалюванні.
+    OZ_ChatList Copy()
+    {
+        OZ_ChatList c = new OZ_ChatList();
+        c.Frozen = Frozen;
+
+        int i;
+        if (Items)
+        {
+            for (i = 0; i < Items.Count(); i++)
+            {
+                if (Items[i])
+                    c.Items.Insert(Items[i].Copy());
+            }
+        }
+
+        if (Invites)
+        {
+            for (i = 0; i < Invites.Count(); i++)
+            {
+                if (Invites[i])
+                    c.Invites.Insert(Invites[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 class OZ_ChatLine
@@ -478,6 +773,18 @@ class OZ_ChatLine
     string Who  = "";
     string Text = "";
     bool   Mine = false;
+
+    OZ_ChatLine Copy()
+    {
+        OZ_ChatLine c = new OZ_ChatLine();
+        c.At       = At;
+        c.AUid     = AUid;
+        c.WhoColor = WhoColor;
+        c.Who      = Who;
+        c.Text     = Text;
+        c.Mine     = Mine;
+        return c;
+    }
 }
 
 class OZ_ChatView
@@ -502,6 +809,39 @@ class OZ_ChatView
     {
         Lines   = new array<ref OZ_ChatLine>();
         Members = new array<string>();
+    }
+
+    // Найдовгоживучіший конверт КПК: розмова лежить у m_View весь час, поки
+    // вікно відкрите, а «дай старіше» ще й вставляє нові рядки в її початок.
+    OZ_ChatView Copy()
+    {
+        OZ_ChatView c = new OZ_ChatView();
+        c.Id     = Id;
+        c.Kind   = Kind;
+        c.Title  = Title;
+        c.Desc   = Desc;
+        c.More   = More;
+        c.Before = Before;
+        c.Frozen = Frozen;
+        c.Owner  = Owner;
+
+        int i;
+        if (Lines)
+        {
+            for (i = 0; i < Lines.Count(); i++)
+            {
+                if (Lines[i])
+                    c.Lines.Insert(Lines[i].Copy());
+            }
+        }
+
+        if (Members)
+        {
+            for (i = 0; i < Members.Count(); i++)
+                c.Members.Insert(Members[i]);
+        }
+
+        return c;
     }
 }
 
@@ -577,5 +917,21 @@ class OZ_PdaSnapshot
     void OZ_PdaSnapshot()
     {
         Contacts = new array<string>();
+    }
+
+    OZ_PdaSnapshot Copy()
+    {
+        OZ_PdaSnapshot c = new OZ_PdaSnapshot();
+        c.Owner = Owner;
+        c.Base  = Base;
+        c.Org   = Org;
+
+        if (Contacts)
+        {
+            for (int i = 0; i < Contacts.Count(); i++)
+                c.Contacts.Insert(Contacts[i]);
+        }
+
+        return c;
     }
 }

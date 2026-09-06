@@ -76,13 +76,19 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         list.Frozen = true;
 
         string serr;
-        OZ_PdaSnapshot snap;
+        OZ_PdaSnapshot snap = new OZ_PdaSnapshot();
         if (pda.OZ_Snapshot() != "" && JsonFileLoader<OZ_PdaSnapshot>.LoadData(pda.OZ_Snapshot(), snap, serr) && snap && snap.Contacts)
         {
-            for (int i = 0; i < snap.Contacts.Count(); i++)
+            // Копія набору імен до циклу: кожен new нижче -- виділення,
+            // після якого читати з конверта вже не можна.
+            array<string> names = new array<string>();
+            for (int ni = 0; ni < snap.Contacts.Count(); ni++)
+                names.Insert(snap.Contacts[ni]);
+
+            for (int i = 0; i < names.Count(); i++)
             {
                 OZ_ContactEntry e = new OZ_ContactEntry();
-                e.Name = snap.Contacts[i];
+                e.Name = names[i];
                 e.Rel  = "friend";
                 list.Entries.Insert(e);
             }
@@ -446,7 +452,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
     {
         ok = false;
 
-        OZ_PdaFlagOp flag;
+        OZ_PdaFlagOp flag = new OZ_PdaFlagOp();
         string err;
         if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {
@@ -473,7 +479,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
     {
         ok = false;
 
-        OZ_NameRef r;
+        OZ_NameRef r = new OZ_NameRef();
         string err;
         if (!JsonFileLoader<OZ_NameRef>.LoadData(json, r, err) || !r)
         {

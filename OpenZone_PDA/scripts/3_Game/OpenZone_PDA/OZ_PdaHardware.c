@@ -57,6 +57,30 @@ class OZ_ModuleSpec
     // Які сторінки модуль вмикає. Антена вмикає "radio", радіометр -- свою
     // шкалу; поле загальне, щоб чужий модуль міг увімкнути свою сторінку.
     ref array<string> EnablesPages;
+
+    // Копія в об'єкт, який зробив скрипт (шапка OZ_ConfigBase ядра). s_Cfg
+    // живе весь запуск сервера, і ModuleFor читає ці поля на кожному
+    // під'єднанні модуля -- через години після розбору файла.
+    OZ_ModuleSpec Copy()
+    {
+        OZ_ModuleSpec c = new OZ_ModuleSpec();
+        c.ClassName   = ClassName;
+        c.DisplayName = DisplayName;
+        c.Origin      = Origin;
+        c.Kind        = Kind;
+        c.SpyMinutes  = SpyMinutes;
+        c.RangeM      = RangeM;
+        c.PowerFactor = PowerFactor;
+
+        c.EnablesPages = new array<string>();
+        if (EnablesPages)
+        {
+            for (int i = 0; i < EnablesPages.Count(); i++)
+                c.EnablesPages.Insert(EnablesPages[i]);
+        }
+
+        return c;
+    }
 }
 
 class OZ_CarrierSpec
@@ -78,6 +102,22 @@ class OZ_CarrierSpec
     // Другий важіль тиру після відсіків: дискета на шість записів і польовий
     // накопичувач -- різні речі за той самий слот.
     int    MaxRecords  = 0;
+
+    // ЦІНА КОПІЇ, ЯКУ ТУТ ВИДНО НАЙКРАЩЕ: ключа, якого У ФАЙЛІ НЕМАЄ, копія
+    // переносить нулем, а не значенням з ініціалізатора, -- отже носій без
+    // "Writable" стане НЕперезаписуваним. Відрізнити «немає» від «нуль»
+    // Validate не може, і вгадувати на користь true не має права: одноразовий
+    // чип, який раптом можна переписати, втрачає половину своєї цінності.
+    // Файл, який пише сам мод, несе всі ключі; це про обрізаний вручну.
+    OZ_CarrierSpec Copy()
+    {
+        OZ_CarrierSpec c = new OZ_CarrierSpec();
+        c.ClassName   = ClassName;
+        c.DisplayName = DisplayName;
+        c.Writable    = Writable;
+        c.MaxRecords  = MaxRecords;
+        return c;
+    }
 }
 
 class OZ_PdaHardwareConfig : OZ_ConfigBase
@@ -222,6 +262,24 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         if (!Carriers)
             Carriers = new array<ref OZ_CarrierSpec>();
 
+        // ВКЛАДЕНЕ -- У СТВОРЕНЕ СКРИПТОМ, І ДО ПЕРШОГО ЖЕ ВИДІЛЕННЯ.
+        //
+        // Лоадер кличе Validate одразу після розбору, тобто поки читання ще
+        // чесне; далі в цьому ж методі складаються попередження й заводяться
+        // масиви, а s_Cfg потім живе весь запуск сервера. Null лишаємо null:
+        // на нього нижче є своя скарга, яка й полагодить файл.
+        int rs;
+        for (rs = 0; rs < Modules.Count(); rs++)
+        {
+            if (Modules[rs])
+                Modules.Set(rs, Modules[rs].Copy());
+        }
+        for (rs = 0; rs < Carriers.Count(); rs++)
+        {
+            if (Carriers[rs])
+                Carriers.Set(rs, Carriers[rs].Copy());
+        }
+
         // NULL-ЕЛЕМЕНТ -- ЦІЛКОМ ЗАКОННИЙ JSON, і саме він валив усе далі.
         //
         // `"Modules": [null]` розбирається без помилки, а перша ж перевірка
@@ -291,9 +349,12 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
                 warnings++;
             }
 
-            if (m.PowerFactor < 0)
+            // <= 0, а не < 0: після копії ключ, якого у файлі немає, читається
+            // НУЛЕМ, а не одиницею з ініціалізатора, і множник живлення нуль
+            // не означає нічого. Справжнє умовчання виставляє саме Validate.
+            if (m.PowerFactor <= 0)
             {
-                OZ_Log.Warn("module \"" + m.ClassName + "\" has a negative PowerFactor, clamped to 1");
+                OZ_Log.Warn("module \"" + m.ClassName + "\" has no usable PowerFactor, set to 1");
                 m.PowerFactor = 1.0;
                 warnings++;
             }

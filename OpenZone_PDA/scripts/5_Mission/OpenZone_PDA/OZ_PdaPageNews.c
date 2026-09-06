@@ -153,9 +153,14 @@ class OZ_PdaPageNews : OZ_PdaPage
         {
             // Не 'v': так зветься OZ_NewsView у гілці open нижче, а Enforce не
             // дає оголосити одне ім'я двічі в сусідніх гілках однієї функції.
-            OZ_NewsVoices vo;
+            OZ_NewsVoices vo = new OZ_NewsVoices();
             if (!JsonFileLoader<OZ_NewsVoices>.LoadData(json, vo, err) || !vo)
                 return;
+
+            // Прапорці знімаємо ДО циклу: Insert росте, а це виділення.
+            bool canWrite = false;
+            if (vo.Leader || vo.Admin)
+                canWrite = true;
 
             m_Self = vo.Self;
             m_Voices.Clear();
@@ -166,7 +171,6 @@ class OZ_PdaPageNews : OZ_PdaPage
             }
             m_Pick = 0;
 
-            bool canWrite = vo.Leader || vo.Admin;
             if (m_BtnWrite)
                 m_BtnWrite.Show(canWrite);
             if (!canWrite && m_Compose)
@@ -201,23 +205,31 @@ class OZ_PdaPageNews : OZ_PdaPage
 
         if (op == "list")
         {
-            OZ_NewsList l;
+            OZ_NewsList l = new OZ_NewsList();
             if (!JsonFileLoader<OZ_NewsList>.LoadData(json, l, err) || !l)
                 return;
 
-            m_List = l;
+            // Копія: Items виділив серіалізатор, а Repaint ходить по них
+            // на кожному кліку рядка.
+            m_List = l.Copy();
             Repaint();
             return;
         }
 
         if (op == "open")
         {
-            OZ_NewsView v;
+            OZ_NewsView v = new OZ_NewsView();
             if (!JsonFileLoader<OZ_NewsView>.LoadData(json, v, err) || !v)
                 return;
 
-            SetText("PostTitle", v.Title);
-            SetText("PostMeta", v.Who + "   " + Day(v.At));
+            // Знімаємо все до першої склейки: SetText і Day() виділяють.
+            string ptitle = v.Title;
+            string pwho   = v.Who;
+            string pat    = v.At;
+            string pbody  = v.Body;
+
+            SetText("PostTitle", ptitle);
+            SetText("PostMeta", pwho + "   " + Day(pat));
 
             MultilineTextWidget body = MultilineTextWidget.Cast(Wgt("PostBody"));
             if (body)

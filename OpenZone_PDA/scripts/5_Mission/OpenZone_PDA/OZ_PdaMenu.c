@@ -429,7 +429,7 @@ class OZ_PdaMenu : UIScriptedMenu
     private void RebuildIfPagesChanged(string json)
     {
         string err;
-        OZ_PdaDeviceStatus st;
+        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
         if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
             return;
         if (!st.Pages)
@@ -500,12 +500,16 @@ class OZ_PdaMenu : UIScriptedMenu
     private void BuildFrom(string json)
     {
         string err;
-        OZ_PdaDeviceStatus st;
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
+        OZ_PdaDeviceStatus parsed = new OZ_PdaDeviceStatus();
+        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, parsed, err))
         {
             OZ_Log.Error("device status unreadable while building tabs: " + err);
             return;
         }
+
+        // Копія: нижче AddTab створює віджет на кожну вкладку, а Pages
+        // читається ще й після цього -- і перед цим, і після.
+        OZ_PdaDeviceStatus st = parsed.Copy();
 
         // ЗАЩІПКА СТАВИТЬСЯ В КІНЦІ, і лише коли стрічка справді з'явилась.
         //
@@ -764,7 +768,7 @@ class OZ_PdaMenu : UIScriptedMenu
         }
 
         string err;
-        OZ_PdaDeviceStatus st;
+        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
         if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
             return;
 
@@ -903,7 +907,7 @@ class OZ_PdaMenu : UIScriptedMenu
     private void PaintSealed(string json)
     {
         string err;
-        OZ_PdaDeviceStatus st;
+        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
         if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
             return;
 
@@ -1133,8 +1137,8 @@ class OZ_PdaMenu : UIScriptedMenu
         {
             int y, mo, d, h, m;
             GetGame().GetWorld().GetDate(y, mo, d, h, m);
-            string tm = Pad2(h);
-            tm += ":" + Pad2(m);
+            string tm = OZ_Time.Pad2(h);
+            tm += ":" + OZ_Time.Pad2(m);
             right.SetText(tm);
         }
     }
@@ -1157,7 +1161,7 @@ class OZ_PdaMenu : UIScriptedMenu
         }
 
         string err;
-        OZ_PdaDeviceStatus st;
+        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
         if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err) || !st)
             return;
 
@@ -1167,14 +1171,6 @@ class OZ_PdaMenu : UIScriptedMenu
             m_StatusMid.SetText("#STR_OZ_DEV_OFFLINE_SHORT");
     }
 
-    // Двоцифровий запис -- у ядрі (OZ_Time.Pad2); тут лишається тонкий вхід,
-    // поки ядро не зробить свій публічним (записано в звіті задачі 52).
-    private string Pad2(int v)
-    {
-        if (v < 10)
-            return "0" + v.ToString();
-        return v.ToString();
-    }
 
     // true -- натискання було по цифровій панелі й уже розібране.
     private bool PinPadClick(string name)

@@ -359,7 +359,7 @@ class OZ_PdaHud
         // сторінці, коли відкриють.
         if (pageId == OZ_PdaConst.PAGE_NEWS && op == "push" && ok)
         {
-            OZ_NewsPush np;
+            OZ_NewsPush np = new OZ_NewsPush();
             string nerr;
             if (!JsonFileLoader<OZ_NewsPush>.LoadData(json, np, nerr) || !np)
                 return;
@@ -370,14 +370,19 @@ class OZ_PdaHud
             if (!np.Fresh)
                 return;
 
+            // Знімаємо обидва рядки ДО Ensure(): він будує ціле дерево
+            // віджетів, а конверт виділив серіалізатор.
+            string nwho   = np.Who;
+            string ntitle = np.Title;
+
             Ensure();
             if (s_ToastWho)
             {
-                s_ToastWho.SetText(Widget.TranslateString("#STR_OZ_TOAST_NEWS") + "  " + np.Who);
+                s_ToastWho.SetText(Widget.TranslateString("#STR_OZ_TOAST_NEWS") + "  " + nwho);
                 s_ToastWho.SetColor(OZ_Palette.ACCENT);
             }
             if (s_ToastText)
-                s_ToastText.SetText(np.Title);
+                s_ToastText.SetText(ntitle);
             s_ToastUntil = GetGame().GetTime() + s_ToastHoldMs;
             return;
         }
@@ -385,7 +390,7 @@ class OZ_PdaHud
         // Пуш маячків від сервера: список і дві клієнтські ручки тюнінгу.
         if (pageId == OZ_PdaConst.PAGE_MAP && op == "beacons" && ok)
         {
-            OZ_BeaconPush bp;
+            OZ_BeaconPush bp = new OZ_BeaconPush();
             string berr;
             if (JsonFileLoader<OZ_BeaconPush>.LoadData(json, bp, berr) && bp)
             {
@@ -394,8 +399,13 @@ class OZ_PdaHud
                 s_Beacons.Clear();
                 if (bp.Beacons)
                 {
+                    // Копія: статик живе всю місію, а міні-карта читає його
+                    // двічі на секунду.
                     for (int pb = 0; pb < bp.Beacons.Count(); pb++)
-                        s_Beacons.Insert(bp.Beacons[pb]);
+                    {
+                        if (bp.Beacons[pb])
+                            s_Beacons.Insert(bp.Beacons[pb].Copy());
+                    }
                 }
                 s_BeaconSeq++;
                 if (bp.AdvanceM > 0)
@@ -410,7 +420,7 @@ class OZ_PdaHud
         // відкрита і сама спитала. Відповідь одна на всіх.
         if (pageId == OZ_PdaConst.PAGE_MAP && op == "state" && ok)
         {
-            OZ_MapState ms;
+            OZ_MapState ms = new OZ_MapState();
             string merr;
             if (JsonFileLoader<OZ_MapState>.LoadData(json, ms, merr) && ms)
             {
@@ -420,7 +430,10 @@ class OZ_PdaHud
                 if (ms.Beacons)
                 {
                     for (int bi = 0; bi < ms.Beacons.Count(); bi++)
-                        s_Beacons.Insert(ms.Beacons[bi]);
+                    {
+                        if (ms.Beacons[bi])
+                            s_Beacons.Insert(ms.Beacons[bi].Copy());
+                    }
                 }
                 s_BeaconSeq++;
             }
@@ -432,7 +445,7 @@ class OZ_PdaHud
 
         OZ_Log.Dbg("hud: chat line push heard");
 
-        OZ_ChatPush p;
+        OZ_ChatPush p = new OZ_ChatPush();
         string err;
         if (!JsonFileLoader<OZ_ChatPush>.LoadData(json, p, err) || !p)
             return;
@@ -440,27 +453,35 @@ class OZ_PdaHud
         if (p.Mine)
             return;
 
+        // Усе з конверта -- ДО Ensure(): він будує дерево віджетів, а далі
+        // йдуть склейки й переклади, і кожне з цього -- виділення.
+        string pkind  = p.Kind;
+        string ptitle = p.Title;
+        string pwho   = p.Who;
+        string ptext  = p.Text;
+        int    pcolor = p.WhoColor;
+
         Ensure();
         if (s_ToastWho)
         {
             // ЗВІДКИ прийшло -- прямо в заголовку: група на ім'я, пейджер,
             // Зона чи особисте. Хто пише -- фарбується фракцією.
             string chan = "#STR_OZ_TOAST_DM";
-            if (p.Kind == "group")
-                chan = p.Title;
-            else if (p.Kind == "npc")
+            if (pkind == "group")
+                chan = ptitle;
+            else if (pkind == "npc")
                 chan = "#STR_OZ_CHAT_PAGER";
-            else if (p.Kind == "zone")
+            else if (pkind == "zone")
                 chan = "#STR_OZ_CHAT_ZONE";
 
-            s_ToastWho.SetText(p.Who + "   [" + Widget.TranslateString(chan) + "]");
-            if (p.WhoColor != 0)
-                s_ToastWho.SetColor(p.WhoColor);
+            s_ToastWho.SetText(pwho + "   [" + Widget.TranslateString(chan) + "]");
+            if (pcolor != 0)
+                s_ToastWho.SetColor(pcolor);
             else
                 s_ToastWho.SetColor(OZ_Palette.ACCENT);
         }
         if (s_ToastText)
-            s_ToastText.SetText(p.Text);
+            s_ToastText.SetText(ptext);
         s_ToastUntil = GetGame().GetTime() + s_ToastHoldMs;
         OZ_Log.Dbg("hud: toast armed until=" + s_ToastUntil.ToString() + " who=" + p.Who);
     }

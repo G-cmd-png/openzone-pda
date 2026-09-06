@@ -10,6 +10,15 @@ class OZ_HudPanePos
     string Id = "";
     float  X  = 0;
     float  Y  = 0;
+
+    OZ_HudPanePos Copy()
+    {
+        OZ_HudPanePos c = new OZ_HudPanePos();
+        c.Id = Id;
+        c.X  = X;
+        c.Y  = Y;
+        return c;
+    }
 }
 
 class OZ_HudLayoutFile
@@ -20,6 +29,25 @@ class OZ_HudLayoutFile
     void OZ_HudLayoutFile()
     {
         Panes = new array<ref OZ_HudPanePos>();
+    }
+
+    // Файл читається один раз за сеанс і живе в статику: кожна панель HUD
+    // питає свою позицію з нього, і кожне перетягування пише туди ж.
+    OZ_HudLayoutFile Copy()
+    {
+        OZ_HudLayoutFile c = new OZ_HudLayoutFile();
+        c.Version = Version;
+
+        if (Panes)
+        {
+            for (int i = 0; i < Panes.Count(); i++)
+            {
+                if (Panes[i])
+                    c.Panes.Insert(Panes[i].Copy());
+            }
+        }
+
+        return c;
     }
 }
 
@@ -37,7 +65,13 @@ class OZ_PdaHudLayout
         s_File = new OZ_HudLayoutFile();
 
         if (FileExist(PATH))
+        {
             JsonFileLoader<OZ_HudLayoutFile>.JsonLoadFile(PATH, s_File);
+            // Корінь створив скрипт, а от Panes і кожну позицію в ньому --
+            // серіалізатор; файл читається раз за сеанс, а панелі питають
+            // його весь час (шапка OZ_ConfigBase ядра).
+            s_File = s_File.Copy();
+        }
 
         if (!s_File.Panes)
             s_File.Panes = new array<ref OZ_HudPanePos>();

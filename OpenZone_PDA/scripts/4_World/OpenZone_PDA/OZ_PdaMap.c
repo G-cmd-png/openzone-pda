@@ -24,6 +24,26 @@ class OZ_BeaconPush
     {
         Beacons = new array<ref OZ_MapBeacon>();
     }
+
+    // Маячки з цієї посилки лягають у статик HUD і в стан сторінки карти,
+    // тобто живуть далеко за межами свого розбору.
+    OZ_BeaconPush Copy()
+    {
+        OZ_BeaconPush c = new OZ_BeaconPush();
+        c.AdvanceM = AdvanceM;
+        c.ToastS   = ToastS;
+
+        if (Beacons)
+        {
+            for (int i = 0; i < Beacons.Count(); i++)
+            {
+                if (Beacons[i])
+                    c.Beacons.Insert(Beacons[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 class OZ_PdaHandlerMap : OZ_PageHandler
@@ -204,10 +224,13 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (pda.OZ_RouteJson() == "")
             return r;
 
+        // КОПІЯ ПЕРЕД ВИХОДОМ: список залишає цю функцію живим, а
+        // викликач дописує в нього, ріже його й серіалізує назад -- усе
+        // після нових виділень (шапка OZ_ConfigBase ядра).
         string err;
-        OZ_MarkerList parsed;
+        OZ_MarkerList parsed = new OZ_MarkerList();
         if (JsonFileLoader<OZ_MarkerList>.LoadData(pda.OZ_RouteJson(), parsed, err) && parsed && parsed.Items)
-            return parsed;
+            return parsed.Copy();
         return r;
     }
 
@@ -235,7 +258,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerRef r;
+        OZ_MarkerRef r = new OZ_MarkerRef();
         string err;
         if (!JsonFileLoader<OZ_MarkerRef>.LoadData(json, r, err) || !r || r.Id == "")
         {
@@ -408,7 +431,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerList incoming;
+        OZ_MarkerList incoming = new OZ_MarkerList();
         string err;
         if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Route(), incoming, err) || !incoming || !incoming.Items)
         {
@@ -486,7 +509,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerRef r;
+        OZ_MarkerRef r = new OZ_MarkerRef();
         string err;
         if (!JsonFileLoader<OZ_MarkerRef>.LoadData(json, r, err) || !r)
         {
@@ -518,7 +541,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         OZ_MarkerList carried = new OZ_MarkerList();
         if (c.OZ_Marks() != "")
         {
-            OZ_MarkerList parsed;
+            OZ_MarkerList parsed = new OZ_MarkerList();
             if (JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), parsed, err) && parsed && parsed.Items)
                 carried = parsed;
             else
@@ -585,7 +608,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return list;
 
         string err;
-        OZ_MarkerList parsed;
+        OZ_MarkerList parsed = new OZ_MarkerList();
         if (!JsonFileLoader<OZ_MarkerList>.LoadData(raw, parsed, err) || !parsed)
         {
             // Зіпсований запис НЕ мовчимо й НЕ затираємо: гравець має знати,
@@ -596,7 +619,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
         if (!parsed.Items)
             parsed.Items = new array<ref OZ_MapMarker>();
-        return parsed;
+
+        // КОПІЯ ПЕРЕД ВИХОДОМ, з тієї ж причини, що в LoadRouteOf: усе, що
+        // роблять із цим списком, робиться вже після нових виділень.
+        return parsed.Copy();
     }
 
     private bool SaveMarkers(OZ_PDA_Base pda, OZ_MarkerList list)
@@ -631,7 +657,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MapMarker incoming;
+        OZ_MapMarker incoming = new OZ_MapMarker();
         string err;
         if (!JsonFileLoader<OZ_MapMarker>.LoadData(json, incoming, err) || !incoming)
         {
@@ -690,7 +716,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerRef r;
+        OZ_MarkerRef r = new OZ_MarkerRef();
         string err;
         if (!JsonFileLoader<OZ_MarkerRef>.LoadData(json, r, err) || !r)
         {
@@ -743,7 +769,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MapMarker incoming;
+        OZ_MapMarker incoming = new OZ_MapMarker();
         string err;
         if (!JsonFileLoader<OZ_MapMarker>.LoadData(json, incoming, err) || !incoming)
         {
@@ -1087,7 +1113,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     {
         ok = false;
 
-        OZ_TransponderOp t;
+        OZ_TransponderOp t = new OZ_TransponderOp();
         string err;
         if (!JsonFileLoader<OZ_TransponderOp>.LoadData(json, t, err) || !t)
         {

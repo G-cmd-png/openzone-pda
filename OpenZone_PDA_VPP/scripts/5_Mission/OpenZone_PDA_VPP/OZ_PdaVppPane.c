@@ -62,7 +62,7 @@ modded class OZ_VppAdminMenu
     {
         if (name == "Tuning")
         {
-            OZ_PdaTuning t;
+            OZ_PdaTuning t = new OZ_PdaTuning();
             string err;
             if (JsonFileLoader<OZ_PdaTuning>.LoadData(body, t, err) && t)
             {
@@ -76,10 +76,27 @@ modded class OZ_VppAdminMenu
 
         if (name == "Hardware")
         {
-            OZ_PdaHardwareConfig hc;
+            OZ_PdaHardwareConfig hc = new OZ_PdaHardwareConfig();
             string herr;
             if (JsonFileLoader<OZ_PdaHardwareConfig>.LoadData(body, hc, herr) && hc)
             {
+                // Корінь створив скрипт, а от кожен запис у двох списках --
+                // серіалізатор, і адмін правитиме їх ще довго, перш ніж
+                // натисне «зберегти» (шапка OZ_ConfigBase ядра). Пересідаємо
+                // одразу, поки читання чесне; Validate тут не кличемо -- це
+                // редактор, а не завантаження, і скарги в лог не його справа.
+                int hi;
+                for (hi = 0; hc.Modules && hi < hc.Modules.Count(); hi++)
+                {
+                    if (hc.Modules[hi])
+                        hc.Modules.Set(hi, hc.Modules[hi].Copy());
+                }
+                for (hi = 0; hc.Carriers && hi < hc.Carriers.Count(); hi++)
+                {
+                    if (hc.Carriers[hi])
+                        hc.Carriers.Set(hi, hc.Carriers[hi].Copy());
+                }
+
                 m_HwCfg = hc;
                 RebuildHwList();
             }

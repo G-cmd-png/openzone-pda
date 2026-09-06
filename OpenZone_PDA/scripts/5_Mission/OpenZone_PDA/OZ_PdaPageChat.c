@@ -498,7 +498,7 @@ class OZ_PdaPageChat : OZ_PdaPage
                 return;
             }
 
-            OZ_ChatView older;
+            OZ_ChatView older = new OZ_ChatView();
             string olerr;
             if (!JsonFileLoader<OZ_ChatView>.LoadData(json, older, olerr) || !older || !older.Lines)
                 return;
@@ -508,11 +508,13 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (!m_View || older.Id != m_OpenId)
                 return;
 
-            for (int oi = older.Lines.Count() - 1; oi >= 0; oi--)
-                m_View.Lines.InsertAt(older.Lines[oi], 0);
-
+            // Спершу прапорці, потім вставка: InsertAt росте, а це виділення,
+            // після якого читати з конверта вже не можна.
             m_View.More   = older.More;
             m_View.Before = older.Before;
+
+            for (int oi = older.Lines.Count() - 1; oi >= 0; oi--)
+                m_View.Lines.InsertAt(older.Lines[oi].Copy(), 0);
 
             m_ScrollTop = true;
             PaintView();
@@ -542,15 +544,16 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (op == "list")
         {
             string lerr;
-            OZ_ChatList heads;
+            OZ_ChatList heads = new OZ_ChatList();
             if (!JsonFileLoader<OZ_ChatList>.LoadData(json, heads, lerr))
             {
                 OZ_Log.Error("chat list unreadable: " + lerr);
                 return;
             }
-            m_Heads = heads;
+            // Копія: перелік лежить у полі й читається на кожному пуші.
+            m_Heads = heads.Copy();
             if (m_BtnGroup)
-                m_BtnGroup.Show(!heads.Frozen);
+                m_BtnGroup.Show(!m_Heads.Frozen);
             PaintList();
             return;
         }
@@ -558,13 +561,14 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (op == "open")
         {
             string verr;
-            OZ_ChatView v;
+            OZ_ChatView v = new OZ_ChatView();
             if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, verr))
             {
                 OZ_Log.Error("chat view unreadable: " + verr);
                 return;
             }
-            m_View = v;
+            // Копія: розмова живе, поки відкрите вікно.
+            m_View = v.Copy();
             PaintView();
             return;
         }
@@ -598,7 +602,7 @@ class OZ_PdaPageChat : OZ_PdaPage
                 return;
 
             string perr;
-            OZ_ChatPush p;
+            OZ_ChatPush p = new OZ_ChatPush();
             if (!JsonFileLoader<OZ_ChatPush>.LoadData(json, p, perr) || !p)
             {
                 OZ_Log.Error("chat line unreadable: " + perr);
@@ -641,7 +645,7 @@ class OZ_PdaPageChat : OZ_PdaPage
         {
             // Сервер відповів id нової розмови -- одразу її й відкриваємо.
             string rerr;
-            OZ_ChatRef r;
+            OZ_ChatRef r = new OZ_ChatRef();
             if (JsonFileLoader<OZ_ChatRef>.LoadData(json, r, rerr) && r)
                 m_OpenId = r.Id;
 
@@ -661,7 +665,7 @@ class OZ_PdaPageChat : OZ_PdaPage
                 return;
             }
 
-            OZ_ChatInvitees inv;
+            OZ_ChatInvitees inv = new OZ_ChatInvitees();
             string ierr;
             if (!JsonFileLoader<OZ_ChatInvitees>.LoadData(json, inv, ierr) || !inv || !inv.Names)
                 return;

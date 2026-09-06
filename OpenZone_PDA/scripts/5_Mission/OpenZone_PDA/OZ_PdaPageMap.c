@@ -801,11 +801,21 @@ class OZ_PdaPageMap : OZ_PdaPage
         // Пуш маячків: жива частина стану їде сама, поки сторінка відкрита.
         if (op == "beacons" && ok)
         {
-            OZ_BeaconPush bp;
+            OZ_BeaconPush bp = new OZ_BeaconPush();
             string berr;
             if (JsonFileLoader<OZ_BeaconPush>.LoadData(json, bp, berr) && bp && m_State)
             {
-                m_State.Beacons = bp.Beacons;
+                // Копія поелементно: маячки лишаються в стані сторінки й
+                // малюються на кожному перемалюванні.
+                m_State.Beacons = new array<ref OZ_MapBeacon>();
+                if (bp.Beacons)
+                {
+                    for (int nb = 0; nb < bp.Beacons.Count(); nb++)
+                    {
+                        if (bp.Beacons[nb])
+                            m_State.Beacons.Insert(bp.Beacons[nb].Copy());
+                    }
+                }
                 Paint();
             }
             return;
@@ -863,14 +873,15 @@ class OZ_PdaPageMap : OZ_PdaPage
         }
 
         string err;
-        OZ_MapState st;
+        OZ_MapState st = new OZ_MapState();
         if (!JsonFileLoader<OZ_MapState>.LoadData(json, st, err))
         {
             OZ_Log.Error("map state unreadable: " + err);
             return;
         }
 
-        m_State = st;
+        // Копія: вкладене виділив серіалізатор, а тримаємо ми це між кадрами.
+        m_State = st.Copy();
         Paint();
     }
 

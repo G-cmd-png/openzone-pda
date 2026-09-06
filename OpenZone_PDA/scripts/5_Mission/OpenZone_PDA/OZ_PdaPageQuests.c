@@ -42,14 +42,15 @@ class OZ_PdaPageQuests : OZ_PdaPage
         }
 
         string err;
-        OZ_QuestJournal j;
+        OZ_QuestJournal j = new OZ_QuestJournal();
         if (!JsonFileLoader<OZ_QuestJournal>.LoadData(json, j, err))
         {
             OZ_Log.Error("quest journal unreadable: " + err);
             return;
         }
 
-        m_Journal = j;
+        // Копія: вкладене виділив серіалізатор, а тримаємо ми це між кадрами.
+        m_Journal = j.Copy();
         Paint();
     }
 

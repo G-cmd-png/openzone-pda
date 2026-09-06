@@ -14,6 +14,17 @@ class OZ_NewsItem
     string Who     = "";
     string At      = "";
     int    Replies = 0;
+
+    OZ_NewsItem Copy()
+    {
+        OZ_NewsItem c = new OZ_NewsItem();
+        c.Id      = Id;
+        c.Title   = Title;
+        c.Who     = Who;
+        c.At      = At;
+        c.Replies = Replies;
+        return c;
+    }
 }
 
 class OZ_NewsList
@@ -23,6 +34,22 @@ class OZ_NewsList
     void OZ_NewsList()
     {
         Items = new array<ref OZ_NewsItem>();
+    }
+
+    // Стрічку сторінка тримає в m_List і перемальовує з неї на кожному
+    // кліку рядка, створюючи віджет на кожен допис.
+    OZ_NewsList Copy()
+    {
+        OZ_NewsList c = new OZ_NewsList();
+        if (Items)
+        {
+            for (int i = 0; i < Items.Count(); i++)
+            {
+                if (Items[i])
+                    c.Items.Insert(Items[i].Copy());
+            }
+        }
+        return c;
     }
 }
 
@@ -84,7 +111,7 @@ class OZ_NewsReply : OZ_BridgeReply
         if (!to)
             return;
 
-        OZ_NewsFail fail;
+        OZ_NewsFail fail = new OZ_NewsFail();
         string err;
         if (JsonFileLoader<OZ_NewsFail>.LoadData(json, fail, err) && fail && fail.Error != "")
         {
@@ -135,6 +162,23 @@ class OZ_NewsVoices
     void OZ_NewsVoices()
     {
         Voices = new array<string>();
+    }
+
+    OZ_NewsVoices Copy()
+    {
+        OZ_NewsVoices c = new OZ_NewsVoices();
+        c.Self   = Self;
+        c.Admin  = Admin;
+        c.Leader = Leader;
+        c.Org    = Org;
+
+        if (Voices)
+        {
+            for (int i = 0; i < Voices.Count(); i++)
+                c.Voices.Insert(Voices[i]);
+        }
+
+        return c;
     }
 }
 
@@ -228,7 +272,7 @@ class OZ_PdaHandlerNews : OZ_PageHandler
             // Розбираємо, щоб ПЕРЕВІРИТИ, і шлемо той самий документ далі:
             // ліпити з нього другий, побайтно однаковий, означало б тримати
             // два описи одного конверта.
-            OZ_NewsRef r;
+            OZ_NewsRef r = new OZ_NewsRef();
             if (!JsonFileLoader<OZ_NewsRef>.LoadData(json, r, err) || !r || r.Id == "")
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
@@ -242,7 +286,7 @@ class OZ_PdaHandlerNews : OZ_PageHandler
 
         if (op == "post")
         {
-            OZ_NewsPostAsk from;
+            OZ_NewsPostAsk from = new OZ_NewsPostAsk();
             if (!JsonFileLoader<OZ_NewsPostAsk>.LoadData(json, from, err) || !from)
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";

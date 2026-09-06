@@ -26,6 +26,14 @@ class OZ_QuestObjective
 {
     string Text     = "";
     bool   Done     = false;
+
+    OZ_QuestObjective Copy()
+    {
+        OZ_QuestObjective c = new OZ_QuestObjective();
+        c.Text = Text;
+        c.Done = Done;
+        return c;
+    }
 }
 
 class OZ_QuestEntry
@@ -41,6 +49,25 @@ class OZ_QuestEntry
     {
         Objectives = new array<ref OZ_QuestObjective>();
     }
+
+    OZ_QuestEntry Copy()
+    {
+        OZ_QuestEntry c = new OZ_QuestEntry();
+        c.Id    = Id;
+        c.Title = Title;
+        c.State = State;
+
+        if (Objectives)
+        {
+            for (int i = 0; i < Objectives.Count(); i++)
+            {
+                if (Objectives[i])
+                    c.Objectives.Insert(Objectives[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 class OZ_QuestJournal
@@ -54,6 +81,26 @@ class OZ_QuestJournal
     void OZ_QuestJournal()
     {
         Entries = new array<ref OZ_QuestEntry>();
+    }
+
+    // Сторінка квестів тримає журнал у m_Journal: рядки складаються в
+    // Paint(), а Paint кличеться заново на кожному кліку.
+    OZ_QuestJournal Copy()
+    {
+        OZ_QuestJournal c = new OZ_QuestJournal();
+        c.HasProvider  = HasProvider;
+        c.ProviderName = ProviderName;
+
+        if (Entries)
+        {
+            for (int i = 0; i < Entries.Count(); i++)
+            {
+                if (Entries[i])
+                    c.Entries.Insert(Entries[i].Copy());
+            }
+        }
+
+        return c;
     }
 }
 

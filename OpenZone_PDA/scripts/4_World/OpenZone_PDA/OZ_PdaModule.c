@@ -108,7 +108,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_CarrierWriteOp opw;
+        OZ_CarrierWriteOp opw = new OZ_CarrierWriteOp();
         string err;
         if (!JsonFileLoader<OZ_CarrierWriteOp>.LoadData(json, opw, err) || !opw)
         {
@@ -145,7 +145,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             // Records = 0, і операція звітувала успіх: гравець бачив
             // «збережено», чип мовчки ніс сміття, а місткість носія рахувала
             // це в нуль записів. Нотаткова гілка поруч робила правильно.
-            OZ_MarkerList pl;
+            OZ_MarkerList pl = new OZ_MarkerList();
             string perr;
             if (!JsonFileLoader<OZ_MarkerList>.LoadData(pda.OZ_MarkersJson(), pl, perr) || !pl || !pl.Items)
             {
@@ -217,7 +217,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_NoteBook bookW = new OZ_NoteBook();
             if (pdaW.OZ_NotesJson() != "")
             {
-                OZ_NoteBook parsedW;
+                OZ_NoteBook parsedW = new OZ_NoteBook();
                 if (JsonFileLoader<OZ_NoteBook>.LoadData(pdaW.OZ_NotesJson(), parsedW, err) && parsedW && parsedW.Notes)
                     bookW = parsedW;
             }
@@ -284,15 +284,17 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         string serr;
         if (c.OZ_Marks() != "")
         {
-            OZ_MarkerList vm;
+            // Копія: між цими двома розборами стоїть другий розбір, а
+            // серіалізується конверт іще пізніше.
+            OZ_MarkerList vm = new OZ_MarkerList();
             if (JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), vm, serr) && vm && vm.Items)
-                v.Marks = vm;
+                v.Marks = vm.Copy();
         }
         if (c.OZ_Notes() != "")
         {
-            OZ_NoteBook vn;
+            OZ_NoteBook vn = new OZ_NoteBook();
             if (JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), vn, serr) && vn && vn.Notes)
-                v.Notes = vn;
+                v.Notes = vn.Copy();
         }
 
         OZ_CarrierSpec vspec = OZ_PdaHardware.CarrierFor(c.GetType());
@@ -336,7 +338,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (c.OZ_Marks() != "")
         {
-            OZ_MarkerList incoming;
+            OZ_MarkerList incoming = new OZ_MarkerList();
             string err;
             if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), incoming, err) || !incoming || !incoming.Items)
             {
@@ -352,7 +354,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             string raw = pda.OZ_MarkersJson();
             if (raw != "")
             {
-                OZ_MarkerList parsed;
+                OZ_MarkerList parsed = new OZ_MarkerList();
                 if (JsonFileLoader<OZ_MarkerList>.LoadData(raw, parsed, err) && parsed && parsed.Items)
                     mine = parsed;
             }
@@ -438,7 +440,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (c.OZ_Notes() != "")
         {
-            OZ_NoteBook book;
+            OZ_NoteBook book = new OZ_NoteBook();
             string err2;
             if (!JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), book, err2) || !book || !book.Notes)
             {
@@ -461,7 +463,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_NoteBook mineN = new OZ_NoteBook();
             if (pdaN.OZ_NotesJson() != "")
             {
-                OZ_NoteBook parsedN;
+                OZ_NoteBook parsedN = new OZ_NoteBook();
                 if (JsonFileLoader<OZ_NoteBook>.LoadData(pdaN.OZ_NotesJson(), parsedN, err2) && parsedN && parsedN.Notes)
                     mineN = parsedN;
             }
@@ -589,7 +591,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_CarrierItemRef r;
+        OZ_CarrierItemRef r = new OZ_CarrierItemRef();
         string err;
         if (!JsonFileLoader<OZ_CarrierItemRef>.LoadData(json, r, err) || !r || r.Index < 0)
         {
@@ -603,7 +605,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (r.Kind == "mark")
         {
-            OZ_MarkerList src;
+            OZ_MarkerList src = new OZ_MarkerList();
             if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), src, err) || !src || !src.Items || r.Index >= src.Items.Count())
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
@@ -618,7 +620,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             string raw = pda.OZ_MarkersJson();
             if (raw != "")
             {
-                OZ_MarkerList parsed;
+                OZ_MarkerList parsed = new OZ_MarkerList();
                 if (JsonFileLoader<OZ_MarkerList>.LoadData(raw, parsed, err) && parsed && parsed.Items)
                     mine = parsed;
             }
@@ -673,7 +675,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (r.Kind == "note")
         {
-            OZ_NoteBook book;
+            OZ_NoteBook book = new OZ_NoteBook();
             if (!JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), book, err) || !book || !book.Notes || r.Index >= book.Notes.Count())
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
@@ -696,7 +698,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_NoteBook mineN = new OZ_NoteBook();
             if (pdaN.OZ_NotesJson() != "")
             {
-                OZ_NoteBook parsedN;
+                OZ_NoteBook parsedN = new OZ_NoteBook();
                 if (JsonFileLoader<OZ_NoteBook>.LoadData(pdaN.OZ_NotesJson(), parsedN, err) && parsedN && parsedN.Notes)
                     mineN = parsedN;
             }
@@ -760,7 +762,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
     {
         ok = false;
 
-        OZ_CarrierItemRef r;
+        OZ_CarrierItemRef r = new OZ_CarrierItemRef();
         string err;
         if (!JsonFileLoader<OZ_CarrierItemRef>.LoadData(json, r, err) || !r || r.Index < 0)
         {
@@ -774,7 +776,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (r.Kind == "mark")
         {
-            OZ_MarkerList ml;
+            OZ_MarkerList ml = new OZ_MarkerList();
             if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), ml, err) || !ml || !ml.Items || r.Index >= ml.Items.Count())
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
@@ -805,7 +807,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         if (r.Kind == "note")
         {
-            OZ_NoteBook nb;
+            OZ_NoteBook nb = new OZ_NoteBook();
             if (!JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), nb, err) || !nb || !nb.Notes || r.Index >= nb.Notes.Count())
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
@@ -1277,7 +1279,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         if (!pda)
             return "";
 
-        OZ_PdaPinAttempt att;
+        OZ_PdaPinAttempt att = new OZ_PdaPinAttempt();
         string err;
         if (!JsonFileLoader<OZ_PdaPinAttempt>.LoadData(json, att, err) || !att)
         {
@@ -1377,7 +1379,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         if (!pda)
             return "";
 
-        OZ_PdaPinChange ch;
+        OZ_PdaPinChange ch = new OZ_PdaPinChange();
         string err;
         if (!JsonFileLoader<OZ_PdaPinChange>.LoadData(json, ch, err) || !ch)
         {
@@ -1517,7 +1519,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         if (!pda)
             return "";
 
-        OZ_PdaFlagOp flag;
+        OZ_PdaFlagOp flag = new OZ_PdaFlagOp();
         string err;
         if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {
@@ -1552,7 +1554,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             return "";
         }
 
-        OZ_PdaFlagOp flag;
+        OZ_PdaFlagOp flag = new OZ_PdaFlagOp();
         string err;
         if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {

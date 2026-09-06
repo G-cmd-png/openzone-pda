@@ -33,6 +33,28 @@ class OZ_NoteBook
     {
         Notes = new array<ref OZ_Note>();
     }
+
+    // Книжка виходить із розбору живою: BookOf віддає її викликачеві, той
+    // дописує, ріже й серіалізує назад на пристрій -- усе після нових
+    // виділень. Сторінка записок тримає її ще й у m_Book між кадрами.
+    OZ_NoteBook Copy()
+    {
+        OZ_NoteBook c = new OZ_NoteBook();
+        c.Version = Version;
+        c.Max     = Max;
+        c.Frozen  = Frozen;
+
+        if (Notes)
+        {
+            for (int i = 0; i < Notes.Count(); i++)
+            {
+                if (Notes[i])
+                    c.Notes.Insert(Notes[i].Copy());
+            }
+        }
+
+        return c;
+    }
 }
 
 // -------------------------------------------------------------- сторінка
@@ -90,10 +112,12 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         if (pda.OZ_NotesJson() == "")
             return book;
 
+        // КОПІЯ ПЕРЕД ВИХОДОМ: книжка залишає цю функцію живою, а викликач
+        // дописує, ріже й серіалізує її назад (шапка OZ_ConfigBase ядра).
         string err;
-        OZ_NoteBook parsed;
+        OZ_NoteBook parsed = new OZ_NoteBook();
         if (JsonFileLoader<OZ_NoteBook>.LoadData(pda.OZ_NotesJson(), parsed, err) && parsed && parsed.Notes)
-            return parsed;
+            return parsed.Copy();
 
         OZ_Log.Warn("notes: unreadable book on " + pda.GetType() + ", starting fresh (" + err + ")");
         return book;
@@ -143,7 +167,7 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
     {
         ok = false;
 
-        OZ_NoteRef r;
+        OZ_NoteRef r = new OZ_NoteRef();
         string err;
         if (!JsonFileLoader<OZ_NoteRef>.LoadData(json, r, err) || !r || r.Id == "")
         {
@@ -184,7 +208,7 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         OZ_NoteBook book = new OZ_NoteBook();
         if (c.OZ_Notes() != "")
         {
-            OZ_NoteBook parsed;
+            OZ_NoteBook parsed = new OZ_NoteBook();
             if (JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), parsed, err) && parsed && parsed.Notes)
                 book = parsed;
             else
@@ -261,7 +285,7 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
 
     private string Save(string json, OZ_PDA_Base pda, out bool ok, out string error)
     {
-        OZ_Note incoming;
+        OZ_Note incoming = new OZ_Note();
         string err;
         if (!JsonFileLoader<OZ_Note>.LoadData(json, incoming, err) || !incoming)
         {
@@ -348,7 +372,7 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
 
     private string Delete(string json, OZ_PDA_Base pda, out bool ok, out string error)
     {
-        OZ_NoteRef r;
+        OZ_NoteRef r = new OZ_NoteRef();
         string err;
         if (!JsonFileLoader<OZ_NoteRef>.LoadData(json, r, err) || !r || r.Id == "")
         {

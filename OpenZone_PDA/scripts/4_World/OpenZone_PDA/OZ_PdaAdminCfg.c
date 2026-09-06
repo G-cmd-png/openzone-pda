@@ -25,9 +25,17 @@
 // «перечитати всі три конфіги на кожну правку одного» -- дорожче й брехливо.
 class OZ_PdaCfgApply<Class T>
 {
-    static bool Write(string json, string path, string tag)
+    // ОБ'ЄКТ СТВОРЮЄ ВИКЛИКАЧ, і саме тому він приїжджає параметром.
+    //
+    // Тут стояло голе `T tmp;` -- отже корінь виділяв серіалізатор, а він не
+    // виконує ані конструктора, ані ініціалізаторів полів (шапка
+    // OZ_ConfigBase ядра). Version читалось із сирої пам'яті рівно в тій
+    // перевірці, що мусить відмовити файлові з майбутнього. `new T()`
+    // всередині дженерика Enforce не працює надійно -- ту саму причину
+    // записало ядро в OZ_ConfigLoader, -- тож кожен аплаєр створює свій
+    // конкретний тип сам.
+    static bool Write(T tmp, string json, string path, string tag)
     {
-        T tmp;
         string err;
         if (!JsonFileLoader<T>.LoadData(json, tmp, err) || !tmp)
         {
@@ -67,7 +75,8 @@ class OZ_PdaTuningApplier : OZ_AdminCfgApplier
 {
     override bool Apply(string json)
     {
-        if (!OZ_PdaCfgApply<OZ_PdaTuning>.Write(json, OZ_Const.PROFILE_DIR + "\\OZ_PDA_Tuning.json", "Tuning"))
+        OZ_PdaTuning tun = new OZ_PdaTuning();
+        if (!OZ_PdaCfgApply<OZ_PdaTuning>.Write(tun, json, OZ_Const.PROFILE_DIR + "\\OZ_PDA_Tuning.json", "Tuning"))
             return false;
 
         OZ_PdaTuning.ServerLoad();
@@ -100,7 +109,8 @@ class OZ_PdaProfilesApplier : OZ_AdminCfgApplier
 {
     override bool Apply(string json)
     {
-        if (!OZ_PdaCfgApply<OZ_PdaProfilesConfig>.Write(json, OZ_PdaConst.PROFILES, "Profiles"))
+        OZ_PdaProfilesConfig prof = new OZ_PdaProfilesConfig();
+        if (!OZ_PdaCfgApply<OZ_PdaProfilesConfig>.Write(prof, json, OZ_PdaConst.PROFILES, "Profiles"))
             return false;
 
         OZ_PdaProfiles.ServerLoad();
@@ -112,7 +122,8 @@ class OZ_PdaHardwareApplier : OZ_AdminCfgApplier
 {
     override bool Apply(string json)
     {
-        if (!OZ_PdaCfgApply<OZ_PdaHardwareConfig>.Write(json, OZ_PdaConst.HARDWARE, "Hardware"))
+        OZ_PdaHardwareConfig hw = new OZ_PdaHardwareConfig();
+        if (!OZ_PdaCfgApply<OZ_PdaHardwareConfig>.Write(hw, json, OZ_PdaConst.HARDWARE, "Hardware"))
             return false;
 
         OZ_PdaHardware.ServerLoad();

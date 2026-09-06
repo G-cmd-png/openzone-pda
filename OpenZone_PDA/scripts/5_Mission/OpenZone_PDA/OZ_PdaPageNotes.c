@@ -252,7 +252,7 @@ class OZ_PdaPageNotes : OZ_PdaPage
             //
             // Ветка редагування теж проходить тут: id той самий, присвоєння
             // безпечне, а чернеткою запис перестає бути в обох випадках.
-            OZ_NoteRef saved;
+            OZ_NoteRef saved = new OZ_NoteRef();
             string refErr;
             if (JsonFileLoader<OZ_NoteRef>.LoadData(json, saved, refErr) && saved && saved.Id != "")
                 m_CurrentId = saved.Id;
@@ -274,14 +274,15 @@ class OZ_PdaPageNotes : OZ_PdaPage
         }
 
         string err;
-        OZ_NoteBook b;
+        OZ_NoteBook b = new OZ_NoteBook();
         if (!JsonFileLoader<OZ_NoteBook>.LoadData(json, b, err))
         {
             OZ_Log.Error("notes unreadable: " + err);
             return;
         }
 
-        m_Book = b;
+        // Копія: вкладене виділив серіалізатор, а тримаємо ми це між кадрами.
+        m_Book = b.Copy();
 
         // Читальня капсули: писати нема куди, лишається читати й
         // виносити на чип.

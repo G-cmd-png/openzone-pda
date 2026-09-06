@@ -364,6 +364,27 @@ class OZ_CarrierView
     // тих, про які ця сторінка не знає.
     int MaxRecords  = 0;
     int UsedRecords = 0;
+
+    // Сторінка пристрою розкладає обидві секції по своїх m_CarMarks і
+    // m_CarNotes і читає з них рядок, який гравець вибрав ПІЗНІШЕ.
+    OZ_CarrierView Copy()
+    {
+        OZ_CarrierView c = new OZ_CarrierView();
+        c.MaxRecords  = MaxRecords;
+        c.UsedRecords = UsedRecords;
+
+        if (Marks)
+            c.Marks = Marks.Copy();
+        else
+            c.Marks = new OZ_MarkerList();
+
+        if (Notes)
+            c.Notes = Notes.Copy();
+        else
+            c.Notes = new OZ_NoteBook();
+
+        return c;
+    }
 }
 
 
