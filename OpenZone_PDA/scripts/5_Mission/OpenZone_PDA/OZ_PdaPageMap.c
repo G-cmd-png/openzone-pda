@@ -901,12 +901,12 @@ class OZ_PdaPageMap : OZ_PdaPage
             // #STR_OZ_MAP_YOU. Розгортаємо самі -- саме для цього
             // Widget.TranslateString і є.
             if (selfPos != "" && GpsKnows())
-                m_Map.AddUserMark(selfPos.ToVector(), Widget.TranslateString("#STR_OZ_MAP_YOU"), ARGB(255, 255, 122, 26), ICON_SELF);
+                m_Map.AddUserMark(selfPos.ToVector(), Widget.TranslateString("#STR_OZ_MAP_YOU"), OZ_PdaConst.MARK_SELF, ICON_SELF);
 
             for (int i = 0; m_State.Beacons && i < m_State.Beacons.Count(); i++)
             {
                 OZ_MapBeacon b = m_State.Beacons[i];
-                m_Map.AddUserMark(b.Pos.ToVector(), b.Name, ARGB(255, 126, 200, 160), ICON_BEACON);
+                m_Map.AddUserMark(b.Pos.ToVector(), b.Name, OZ_PdaConst.MARK_BEACON, ICON_BEACON);
             }
 
             for (int k = 0; m_State.Markers && k < m_State.Markers.Count(); k++)
@@ -915,9 +915,9 @@ class OZ_PdaPageMap : OZ_PdaPage
 
                 // Обрана мітка світиться -- інакше після кліку не видно, яку
                 // саме зараз видалить кнопка.
-                int colour = ARGB(255, 214, 214, 222);
+                int colour = OZ_PdaConst.MARK_PLAIN;
                 if (m.Id == m_PickedId)
-                    colour = ARGB(255, 255, 122, 26);
+                    colour = OZ_PdaConst.MARK_SELF;
 
                 m_Map.AddUserMark(m.Pos.ToVector(), m.Name, colour, ICON_MARK);
             }
@@ -926,7 +926,7 @@ class OZ_PdaPageMap : OZ_PdaPage
             {
                 OZ_MapMarker rm = m_State.Route[rr];
                 // Нитка нумерована прямо в підписі: порядок і є маршрут.
-                m_Map.AddUserMark(rm.Pos.ToVector(), (rr + 1).ToString() + ". " + rm.Name, ARGB(255, 255, 170, 80), ICON_MARK);
+                m_Map.AddUserMark(rm.Pos.ToVector(), (rr + 1).ToString() + ". " + rm.Name, OZ_PdaConst.MARK_ROUTE, ICON_MARK);
             }
 
             // Перше відкриття -- показуємо гравцеві, де він. Далі карта

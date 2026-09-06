@@ -696,18 +696,18 @@ class OZ_PdaMenu : UIScriptedMenu
             if (icon)
             {
                 if (active)
-                    icon.SetColor(ARGB(255, 79, 181, 232));
+                    icon.SetColor(OZ_Palette.ACCENT);
                 else
-                    icon.SetColor(ARGB(255, 148, 166, 181));
+                    icon.SetColor(OZ_Palette.MUTED);
             }
 
             TextWidget label = TextWidget.Cast(t.FindAnyWidget("TabLabel"));
             if (label)
             {
                 if (active)
-                    label.SetColor(ARGB(255, 79, 181, 232));
+                    label.SetColor(OZ_Palette.ACCENT);
                 else
-                    label.SetColor(ARGB(255, 148, 166, 181));
+                    label.SetColor(OZ_Palette.MUTED);
             }
         }
     }

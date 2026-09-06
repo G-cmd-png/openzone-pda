@@ -692,7 +692,7 @@ class OZ_PdaPageChat : OZ_PdaPage
                 if (m_InviteList)
                 {
                     int irow = m_InviteList.AddItem(inv.Names[ii], NULL, 0);
-                    m_InviteList.SetItemColor(irow, 0, ARGB(255, 79, 181, 232));
+                    m_InviteList.SetItemColor(irow, 0, OZ_Palette.ACCENT);
                 }
             }
 
@@ -841,12 +841,12 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (m_Anon)
         {
             t.SetText("#STR_OZ_CHAT_ANON_ON");
-            t.SetColor(ARGB(255, 79, 181, 232));
+            t.SetColor(OZ_Palette.ACCENT);
         }
         else
         {
             t.SetText("#STR_OZ_CHAT_ANON");
-            t.SetColor(ARGB(255, 148, 166, 181));
+            t.SetColor(OZ_Palette.MUTED);
         }
     }
 
@@ -921,7 +921,7 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (l.WhoColor != 0)
                 who.SetColor(l.WhoColor);
             else if (l.Mine)
-                who.SetColor(ARGB(255, 79, 181, 232));
+                who.SetColor(OZ_Palette.ACCENT);
         }
 
         TextWidget at = TextWidget.Cast(w.FindAnyWidget("LineAt"));
@@ -937,7 +937,7 @@ class OZ_PdaPageChat : OZ_PdaPage
             // вона мусить інакше, ніж звичайна репліка: акцентний колір
             // каже «натисни», сірий текст -- «читай».
             if (l.Text.IndexOf("[MARK] ") == 0)
-                text.SetColor(ARGB(255, 79, 181, 232));
+                text.SetColor(OZ_Palette.ACCENT);
         }
     }
 

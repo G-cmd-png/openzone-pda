@@ -156,22 +156,45 @@ class OZ_NewsPush
     string Title;
     string Who;
     string At;
+    // ЧИ ЦЕ НОВИЙ ДОПИС. Конверт їде на БУДЬ-ЯКУ зміну стрічки -- клієнт
+    // скидає по ньому свій кеш list/open, -- а дзвонити мусить лише новий:
+    // без цього поля виправлений чи стертий пост дзвонив у кожен КПК так
+    // само, як щойно написаний.
+    bool   Fresh;
 }
 
 class OZ_NewsSink : OZ_BridgeSink
 {
     override void Deliver(string json)
     {
+        // ТИМ, У КОГО Є ЧИМ ЧИТАТИ, а не всьому серверу.
+        //
+        // Конверт розсилався кожному підключеному -- разом із тими, у кого
+        // КПК немає взагалі: повний JSON поста в один бік на кожну зміну
+        // стрічки. Той самий фільтр, що вже стоїть на живих рядках чату
+        // (OZ_ChatWho.Holders): прилад при гравці або віртуальний термінал,
+        // якому адмін дозволив цю сторінку.
         array<Man> players = new array<Man>();
         GetGame().GetPlayers(players);
 
         for (int i = 0; i < players.Count(); i++)
         {
-            if (!players[i])
+            PlayerBase pl = PlayerBase.Cast(players[i]);
+            if (!pl)
                 continue;
-            PlayerIdentity id = players[i].GetIdentity();
-            if (id)
-                OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, json, "");
+
+            PlayerIdentity id = pl.GetIdentity();
+            if (!id)
+                continue;
+
+            OZ_PDA_Base dev = OZ_PdaLookup.HeldByPlayer(pl);
+            if (!dev || !dev.OZ_IsOn())
+            {
+                if (!OZ_PdaLookup.VirtualAllows(id.GetPlainId(), OZ_PdaConst.PAGE_NEWS))
+                    continue;
+            }
+
+            OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, json, "");
         }
     }
 }
@@ -196,57 +219,23 @@ class OZ_PdaHandlerNews : OZ_PageHandler
         string err;
         string letter;
 
-        if (op == "list")
-        {
-            OZ_NewsAskList a = new OZ_NewsAskList();
-            a.Uid = uid;
-
-            if (!JsonFileLoader<OZ_NewsAskList>.MakeData(a, letter, err, false))
-            {
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            OZ_BridgeClient.Call("v1/news/list", letter, new OZ_NewsReply(uid, "list"));
-            error = OZ_Const.DEFER;
-            return "";
-        }
+        // "list" і "voices" -- ОДИН лист {Uid} на два маршрути.
+        if (op == "list" || op == "voices")
+            return AskUid(uid, op, "v1/news/" + op, error);
 
         if (op == "open")
         {
+            // Розбираємо, щоб ПЕРЕВІРИТИ, і шлемо той самий документ далі:
+            // ліпити з нього другий, побайтно однаковий, означало б тримати
+            // два описи одного конверта.
             OZ_NewsRef r;
-            if (!JsonFileLoader<OZ_NewsRef>.LoadData(json, r, err) || !r)
+            if (!JsonFileLoader<OZ_NewsRef>.LoadData(json, r, err) || !r || r.Id == "")
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
                 return "";
             }
 
-            OZ_NewsRef ask = new OZ_NewsRef();
-            ask.Id = r.Id;
-
-            if (!JsonFileLoader<OZ_NewsRef>.MakeData(ask, letter, err, false))
-            {
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            OZ_BridgeClient.Call("v1/news/open", letter, new OZ_NewsReply(uid, "open"));
-            error = OZ_Const.DEFER;
-            return "";
-        }
-
-        if (op == "voices")
-        {
-            OZ_NewsAskList v = new OZ_NewsAskList();
-            v.Uid = uid;
-
-            if (!JsonFileLoader<OZ_NewsAskList>.MakeData(v, letter, err, false))
-            {
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            OZ_BridgeClient.Call("v1/news/voices", letter, new OZ_NewsReply(uid, "voices"));
+            OZ_BridgeClient.Call("v1/news/open", json, new OZ_NewsReply(uid, "open"));
             error = OZ_Const.DEFER;
             return "";
         }
@@ -275,11 +264,18 @@ class OZ_PdaHandlerNews : OZ_PageHandler
                 return "";
             }
 
+            // КЛІП ПЕРЕД МОСТОМ, як на кожному іншому текстовому шляху.
+            //
+            // Три поля з клієнта їхали в Discord як є: жодної стелі, жодної
+            // чистки. Тіло, склеєне з частин RPC, обмежене лише терпінням
+            // того, хто його шле, а Discord ріже своє повідомлення сам і
+            // мовчки -- посеред знака. Межі беремо ті самі, що в записок
+            // (заголовок і тіло), а підпис -- коротку: це ім'я, не текст.
             OZ_NewsPostAsk p = new OZ_NewsPostAsk();
             p.Uid   = uid;
-            p.Who   = from.Who;
-            p.Title = from.Title;
-            p.Body  = from.Body;
+            p.Who   = OZ_Text.Clip(from.Who, OZ_PdaTune.ChatTitleMax());
+            p.Title = OZ_Text.Clip(from.Title, OZ_PdaTune.NoteTitleMax());
+            p.Body  = OZ_Text.Clip(from.Body, OZ_PdaTune.NoteBodyMax());
 
             if (!JsonFileLoader<OZ_NewsPostAsk>.MakeData(p, letter, err, false))
             {
@@ -292,6 +288,25 @@ class OZ_PdaHandlerNews : OZ_PageHandler
             return "";
         }
 
+        return "";
+    }
+
+    // Лист {Uid} за маршрутом. Дві операції з трьох мають рівно цю форму.
+    private string AskUid(string uid, string op, string route, out string error)
+    {
+        OZ_NewsAskList a = new OZ_NewsAskList();
+        a.Uid = uid;
+
+        string letter;
+        string err;
+        if (!JsonFileLoader<OZ_NewsAskList>.MakeData(a, letter, err, false))
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+
+        OZ_BridgeClient.Call(route, letter, new OZ_NewsReply(uid, op));
+        error = OZ_Const.DEFER;
         return "";
     }
 }
