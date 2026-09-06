@@ -77,7 +77,11 @@ class OZ_PdaNpc
         a.NpcId = npcId;
         a.Name  = name;
         a.Uid   = playerUid;
-        a.Text  = OZ_Text.Clip(text, OZ_PdaConst.CHAT_MSG_MAX);
+        // Стеля -- ТА САМА, що в решти чату (Tuning.ChatMsgMaxBytes), а не
+        // компільована константа: репліка NPC їде тим самим маршрутом моста
+        // й у той самий тред, і різати її за іншим числом означало б, що
+        // адмінське налаштування діє на всіх, окрім NPC.
+        a.Text  = OZ_Text.Clip(text, OZ_PdaTune.ChatMsgMax());
 
         string letter;
         string err;

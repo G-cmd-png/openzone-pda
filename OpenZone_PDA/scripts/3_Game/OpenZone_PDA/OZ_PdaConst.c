@@ -24,6 +24,9 @@ class OZ_PdaConst
     static const string SLOT_MODULE_2 = "OZ_Module2";
     static const string SLOT_MODULE_3 = "OZ_Module3";
 
+    // ЛАДЕР, а не "OZ_Module" + (i+1): ця функція стоїть у обході відсіків,
+    // а склейка рядка -- алокація на кожен виток. Два рядки економії коштували
+    // б більше, ніж економлять.
     static string ModuleSlot(int i)
     {
         if (i == 0) return SLOT_MODULE_1;
@@ -84,21 +87,21 @@ class OZ_PdaConst
     static const string PAGE_NEWS     = "news";
     static const string PAGE_CHAT     = "chat";
 
-    // Межі записок. Не смак, а захист: текст їде в JSON на диску, а згодом у
-    // тред Discord, у якого своя межа повідомлення.
     // Задокументоване УМОВЧАННЯ ячейок пам'яті для профілю, який їх не
     // оголосив (ТЗ-4 R-F1.3): застосовується з WARNING на ім'я профілю, а не
     // мовчки. Єдине джерело числа для приладу -- Limits.Memory у Profiles.json.
     static const int MEMORY_DEFAULT = 25;
-    static const int NOTE_TITLE_MAX = 64;
-    // 1000, НЕ більше: JsonFileLoader.LoadData ріже значення-рядок до 1023
-    // байтів (зміряно зондом 2026-08-28), і стеля вища за це -- обіцянка,
-    // якої гра дотримати не може. Міст ріже свої тіла до тих самих 1000.
-    static const int NOTE_BODY_MAX  = 1000;
 
-    // Скільки міток -- каже профіль пристрою; тут лише довжина підпису.
-    static const int MARKER_NAME_MAX = 32;
-    static const int MARKER_DESC_MAX = 160;
+    // РЕШТА МЕЖ ТУТ БІЛЬШЕ НЕ ЖИВЕ (ревізія 2026-09-06). Одинадцять констант
+    // -- довжини назв, тіл, історії, складу групи -- були ДРУГИМ комплектом
+    // поставочних чисел поруч із полями OZ_PdaTuning, і жоден із них не
+    // звірявся з іншим. Тепер число одне, і воно в Tuning.json.
+    //
+    // CHAT_MSG_MAX лишився: його читає КЛІЄНТ (OZ_PdaPageChat.MsgMax) як
+    // запасне, поки пакет синхронізації ядра не привіз pda.msg_max, а
+    // OZ_PdaTuning на клієнті стоїть на своїх поставочних і про адмінське
+    // число не знає.
+    static const int CHAT_MSG_MAX   = 1000;
 
     // Наскільки близько треба клікнути, щоб влучити в наявну мітку, у метрах.
     // Не в пікселях: на різних масштабах піксель означає різну відстань, і
@@ -110,22 +113,74 @@ class OZ_PdaConst
     // секунду, інакше губили відмови: між написанням і затиранням
     // проходила частка секунди.
     static const int HINT_HOLD_MS = 4000;
+}
 
-    // На якій відстані можна попросити в друзі. У Зоні знайомляться в очі:
-    // 12 метрів -- це «стоїмо поруч», а не «бачу на схилі».
-    static const float FRIEND_REACH_M = 12;
+// Ідентифікатори слотів -- РОЗВ'ЯЗАНІ ОДИН РАЗ ЗА ЗАПУСК.
+//
+// InventorySlots.GetSlotIdFromString -- нативний пошук по таблиці всіх слотів
+// гри за іменем, і мод кликав його НА КОЖНЕ звернення до вкладеного: обхід
+// трьох відсіків у OZ_ModuleClass робить це тричі, а сам OZ_ModuleClass
+// питають по п'ятнадцять-двадцять разів на один статус пристрою. Імена слотів
+// -- константи, таблиця слотів у рантаймі не міняється, тож відповідь можна
+// дати один раз і більше не питати.
+//
+// Ліниво, а не в OnMissionStart: клієнтові ці ж числа потрібні так само
+// (худ шукає надітий прилад), а серверний старт до нього не доходить.
+class OZ_PdaSlots
+{
+    private static bool s_Done = false;
+    private static int  s_Battery = -1;
+    private static int  s_Carrier = -1;
+    private static int  s_Wear    = -1;
+    private static ref array<int> s_Module;
 
-    // Межі розмов. Довжина повідомлення -- не смак: текст їде в JSON на диску
-    // і згодом у тред Discord, у якого своя межа.
-    // 1000, а не 220 (ТЗ-4 R-D1.2): рушійний RPC псує рядки понад ~1024 байти,
-    // але конверт ріже від 900 (OZ_Const.RPC_STR_CHUNK), тож тисяча проходить;
-    // у ліміт Discord (2000 символів) тисяча байтів кирилиці вкладається двічі.
-    static const int CHAT_MSG_MAX   = 1000;
-    // Сторінка історії -- ЧИСЛО рядків, не вікно часу (ТЗ-4 R-D2): 20 і 20.
-    static const int CHAT_HISTORY_OPEN = 20;
-    static const int CHAT_HISTORY_PAGE = 20;
-    static const int CHAT_TITLE_MAX = 32;
-    static const int CHAT_DESC_MAX  = 96;
-    static const int CHAT_KEEP      = 100;
-    static const int CHAT_GROUP_MAX = 16;
+    private static void Ensure()
+    {
+        if (s_Done)
+            return;
+        s_Done = true;
+
+        s_Battery = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_BATTERY);
+        s_Carrier = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_CARRIER);
+        s_Wear    = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_WEAR);
+
+        s_Module = new array<int>();
+        for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
+            s_Module.Insert(InventorySlots.GetSlotIdFromString(OZ_PdaConst.ModuleSlot(i)));
+    }
+
+    static int Battery() { Ensure(); return s_Battery; }
+    static int Carrier() { Ensure(); return s_Carrier; }
+    static int Wear()    { Ensure(); return s_Wear; }
+
+    static int Module(int i)
+    {
+        Ensure();
+        if (i < 0 || i >= s_Module.Count())
+            return -1;
+        return s_Module[i];
+    }
+
+    // За іменем -- для тих, хто вже має рядок. Ладер із п'яти порівнянь
+    // замість нативного пошуку по таблиці гри; чуже ім'я йде до рушія, як і
+    // раніше, і не кешується: воно тут не наше.
+    static int Of(string name)
+    {
+        Ensure();
+
+        if (name == OZ_PdaConst.SLOT_BATTERY)
+            return s_Battery;
+        if (name == OZ_PdaConst.SLOT_CARRIER)
+            return s_Carrier;
+        if (name == OZ_PdaConst.SLOT_WEAR)
+            return s_Wear;
+
+        for (int i = 0; i < s_Module.Count(); i++)
+        {
+            if (name == OZ_PdaConst.ModuleSlot(i))
+                return s_Module[i];
+        }
+
+        return InventorySlots.GetSlotIdFromString(name);
+    }
 }

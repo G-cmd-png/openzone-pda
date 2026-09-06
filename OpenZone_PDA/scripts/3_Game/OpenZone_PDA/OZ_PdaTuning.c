@@ -1,9 +1,9 @@
 // Tuning.json -- ігрові ходові ручки КПК одним файлом.
 //
 // Все, що адмін хоче підкрутити МІЖ рестартами, живе тут, а не в
-// константах: межі текстів, лічильники спроб, радіуси, секунди. Константи
-// в OZ_PdaConst лишились ЗАПАСНИМИ значеннями -- клієнт і ранній код
-// беруть їх, поки конфіг ще не прочитано.
+// константах: межі текстів, лічильники спроб, радіуси, секунди. Поставочні
+// числа -- ЦЕ САМІ ПОЛЯ цього класу й більш ніщо: другий комплект у
+// OZ_PdaConst знято 2026-09-06, бо ніщо не звіряло його з першим.
 //
 // Частина значень потрібна КЛІЄНТОВІ (тривалість тоста, радіус автопроходу
 // маршруту) -- їх він отримує не звідси, а в конверті beacon-пуша:
@@ -57,8 +57,20 @@ class OZ_PdaTuning : OZ_ConfigBase
 
     private static ref OZ_PdaTuning s_Inst;
 
+    // НІКОЛИ НЕ null, і саме тому кожен читач нижче -- один рядок.
+    //
+    // Було: Get() віддавав null до ServerLoad, і сімнадцять читачів OZ_PdaTune
+    // мали по три рядки на цей випадок, а поставочні числа лежали ДРУГИМ
+    // комплектом у OZ_PdaConst -- два джерела однієї правди, які ніщо не
+    // звіряло. Тепер джерело одне: поля цього класу. Клієнт, який ServerLoad
+    // не кличе ніколи, дістає рівно ті самі поставочні значення.
     static OZ_PdaTuning Get()
     {
+        if (!s_Inst)
+        {
+            s_Inst = new OZ_PdaTuning();
+            s_Inst.LoadDefaults();
+        }
         return s_Inst;
     }
 
@@ -98,9 +110,9 @@ class OZ_PdaTuning : OZ_ConfigBase
 
     override bool Migrate(int from)
     {
-        // v2: блокування пiна стало в СЕКУНДАХ (PinLockoutSeconds замiсть
-        // хвилин). Старе поле не переноситься: схема прожила лiченi години,
-        // и значення за замовчуванням тi самi 5 хвилин.
+        // v2: блокування піна стало в СЕКУНДАХ (PinLockoutSeconds замість
+        // хвилин). Старе поле не переноситься: схема прожила лічені години,
+        // і значення за замовчуванням ті самі 5 хвилин.
         Version = LatestVersion();
         return true;
     }
@@ -110,57 +122,59 @@ class OZ_PdaTuning : OZ_ConfigBase
         warnings = 0;
 
         warnings += ClampMin("PinMaxFails", PinMaxFails, 1);
-        PinMaxFails = Math.Max(PinMaxFails, 1);
         warnings += ClampMin("PinLockoutSeconds", PinLockoutSeconds, 0);
-        PinLockoutSeconds = Math.Max(PinLockoutSeconds, 0);
 
         // Вище 1000 байтів не можна НІДЕ, де текст їздить через
         // JsonFileLoader чи міст: різ на 1023 псує UTF-8 посеред знака.
-        if (NoteBodyMaxBytes > 1000)
-        {
-            OZ_Log.Warn("Tuning: NoteBodyMaxBytes over 1000 breaks storage strings, clamped");
-            NoteBodyMaxBytes = 1000;
-            warnings++;
-        }
-        if (ChatMsgMaxBytes > 1000)
-        {
-            OZ_Log.Warn("Tuning: ChatMsgMaxBytes over 1000 breaks the bridge clip, clamped");
-            ChatMsgMaxBytes = 1000;
-            warnings++;
-        }
+        warnings += ClampMax("NoteBodyMaxBytes", NoteBodyMaxBytes, 1000);
+        warnings += ClampMax("ChatMsgMaxBytes", ChatMsgMaxBytes, 1000);
 
+        // СТЕЛІ ТЕКСТУ МАЮТЬ І ПІДЛОГУ, а не саму лише стелю.
+        //
+        // Нуль чи від'ємне в будь-якій із п'яти означало Substring(0, <=0) на
+        // кожному імені й кожному тілі: назви міток порожніли мовчки, а
+        // від'ємна довжина -- це вже питання до рушія. Чотири байти -- це
+        // одна кирилична пара; менше не є назвою ні для чого.
         warnings += ClampMin("ChatMsgMaxBytes", ChatMsgMaxBytes, 16);
-        ChatMsgMaxBytes = Math.Max(ChatMsgMaxBytes, 16);
+        warnings += ClampMin("ChatTitleMaxBytes", ChatTitleMaxBytes, 4);
+        warnings += ClampMin("ChatDescMaxBytes", ChatDescMaxBytes, 4);
+        warnings += ClampMin("NoteTitleMaxBytes", NoteTitleMaxBytes, 4);
+        warnings += ClampMin("NoteBodyMaxBytes", NoteBodyMaxBytes, 8);
+        warnings += ClampMin("MarkerNameMaxBytes", MarkerNameMaxBytes, 4);
+        warnings += ClampMin("MarkerDescMaxBytes", MarkerDescMaxBytes, 4);
+
         warnings += ClampMin("ChatHistoryOpen", ChatHistoryOpen, 1);
-        ChatHistoryOpen = Math.Max(ChatHistoryOpen, 1);
         warnings += ClampMin("ChatHistoryPage", ChatHistoryPage, 1);
-        ChatHistoryPage = Math.Max(ChatHistoryPage, 1);
         warnings += ClampMin("ChatGroupMax", ChatGroupMax, 0);
         warnings += ClampMin("GroupInviteTtlSeconds", GroupInviteTtlSeconds, 60);
-        GroupInviteTtlSeconds = Math.Max(GroupInviteTtlSeconds, 60);
-        ChatGroupMax = Math.Max(ChatGroupMax, 0);
-
 
         warnings += ClampMin("FriendReachMeters", FriendReachMeters, 1);
-        FriendReachMeters = Math.Max(FriendReachMeters, 1);
         warnings += ClampMin("SwapOfferTtlSeconds", SwapOfferTtlSeconds, 5);
-        SwapOfferTtlSeconds = Math.Max(SwapOfferTtlSeconds, 5);
 
         warnings += ClampMin("ToastSeconds", ToastSeconds, 2);
-        ToastSeconds = Math.Max(ToastSeconds, 2);
         warnings += ClampMin("RouteAdvanceMeters", RouteAdvanceMeters, 5);
-        RouteAdvanceMeters = Math.Max(RouteAdvanceMeters, 5);
         warnings += ClampMin("BeaconPushSeconds", BeaconPushSeconds, 2);
-        BeaconPushSeconds = Math.Max(BeaconPushSeconds, 2);
     }
 
-    // Попередити про замале значення. Сам кламп робить викликач:
-    // Enforce не передає int за посиланням у довільні помічники.
-    private int ClampMin(string name, int val, int floor)
+    // КЛАМП ЖИВЕ ТУТ, а не в викликача. Enforce ПЕРЕДАЄ int за посиланням --
+    // ключове слово inout, -- тож коментар «сам кламп робить викликач» був
+    // неправдою, яка коштувала чотирнадцяти зайвих рядків Math.Max поруч, і
+    // кожен із них міг розійтися зі своїм попередженням непомітно.
+    private int ClampMin(string name, inout int val, int floor)
     {
         if (val >= floor)
             return 0;
         OZ_Log.Warn("Tuning: " + name + " under " + floor.ToString() + ", clamped");
+        val = floor;
+        return 1;
+    }
+
+    private int ClampMax(string name, inout int val, int ceiling)
+    {
+        if (val <= ceiling)
+            return 0;
+        OZ_Log.Warn("Tuning: " + name + " over " + ceiling.ToString() + " breaks storage strings and the bridge clip, clamped");
+        val = ceiling;
         return 1;
     }
 
@@ -171,152 +185,32 @@ class OZ_PdaTuning : OZ_ConfigBase
     }
 }
 
-// Читачі з запасними значеннями: сервер бере конфіг, клієнт і ранній
-// код -- старі константи. Одне місце, одна форма звернення.
+// Читачі одним іменем. Запасних значень тут БІЛЬШЕ НЕМАЄ: Get() ніколи не
+// віддає null, а поставочні числа живуть у полях самого OZ_PdaTuning --
+// один комплект замість двох, що розходились би мовчки.
 class OZ_PdaTune
 {
-    static int PinMaxFails()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.PinMaxFails;
-        return 5;
-    }
+    static int PinMaxFails()      { return OZ_PdaTuning.Get().PinMaxFails; }
+    static int PinLockoutMs()     { return OZ_PdaTuning.Get().PinLockoutSeconds * 1000; }
 
-    static int PinLockoutMs()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.PinLockoutSeconds * 1000;
-        return 300000;
-    }
+    static int ChatMsgMax()       { return OZ_PdaTuning.Get().ChatMsgMaxBytes; }
+    static int ChatTitleMax()     { return OZ_PdaTuning.Get().ChatTitleMaxBytes; }
+    static int ChatDescMax()      { return OZ_PdaTuning.Get().ChatDescMaxBytes; }
+    static int ChatHistoryOpen()  { return OZ_PdaTuning.Get().ChatHistoryOpen; }
+    static int ChatHistoryPage()  { return OZ_PdaTuning.Get().ChatHistoryPage; }
+    static int GroupInviteTtlS()  { return OZ_PdaTuning.Get().GroupInviteTtlSeconds; }
+    static int ChatGroupMax()     { return OZ_PdaTuning.Get().ChatGroupMax; }
 
-    static int ChatMsgMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatMsgMaxBytes;
-        return OZ_PdaConst.CHAT_MSG_MAX;
-    }
+    static int NoteTitleMax()     { return OZ_PdaTuning.Get().NoteTitleMaxBytes; }
+    static int NoteBodyMax()      { return OZ_PdaTuning.Get().NoteBodyMaxBytes; }
 
-    static int ChatTitleMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatTitleMaxBytes;
-        return OZ_PdaConst.CHAT_TITLE_MAX;
-    }
+    static int MarkerNameMax()    { return OZ_PdaTuning.Get().MarkerNameMaxBytes; }
+    static int MarkerDescMax()    { return OZ_PdaTuning.Get().MarkerDescMaxBytes; }
 
-    static int ChatDescMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatDescMaxBytes;
-        return OZ_PdaConst.CHAT_DESC_MAX;
-    }
+    static int FriendReachM()     { return OZ_PdaTuning.Get().FriendReachMeters; }
+    static int SwapOfferTtlMs()   { return OZ_PdaTuning.Get().SwapOfferTtlSeconds * 1000; }
 
-    static int ChatHistoryOpen()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatHistoryOpen;
-        return OZ_PdaConst.CHAT_HISTORY_OPEN;
-    }
-
-    static int ChatHistoryPage()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatHistoryPage;
-        return OZ_PdaConst.CHAT_HISTORY_PAGE;
-    }
-
-    static int GroupInviteTtlS()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.GroupInviteTtlSeconds;
-        return 86400;
-    }
-
-    static int ChatGroupMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ChatGroupMax;
-        return OZ_PdaConst.CHAT_GROUP_MAX;
-    }
-
-
-    static int NoteTitleMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.NoteTitleMaxBytes;
-        return OZ_PdaConst.NOTE_TITLE_MAX;
-    }
-
-    static int NoteBodyMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.NoteBodyMaxBytes;
-        return OZ_PdaConst.NOTE_BODY_MAX;
-    }
-
-    static int MarkerNameMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.MarkerNameMaxBytes;
-        return OZ_PdaConst.MARKER_NAME_MAX;
-    }
-
-    static int MarkerDescMax()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.MarkerDescMaxBytes;
-        return OZ_PdaConst.MARKER_DESC_MAX;
-    }
-
-    static int FriendReachM()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.FriendReachMeters;
-        return OZ_PdaConst.FRIEND_REACH_M;
-    }
-
-    static int SwapOfferTtlMs()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.SwapOfferTtlSeconds * 1000;
-        return 60000;
-    }
-
-    static int ToastSeconds()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.ToastSeconds;
-        return 8;
-    }
-
-    static int RouteAdvanceM()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.RouteAdvanceMeters;
-        return 30;
-    }
-
-    static float BeaconPushSeconds()
-    {
-        OZ_PdaTuning t = OZ_PdaTuning.Get();
-        if (t)
-            return t.BeaconPushSeconds;
-        return 5;
-    }
+    static int ToastSeconds()     { return OZ_PdaTuning.Get().ToastSeconds; }
+    static int RouteAdvanceM()    { return OZ_PdaTuning.Get().RouteAdvanceMeters; }
+    static float BeaconPushSeconds() { return OZ_PdaTuning.Get().BeaconPushSeconds; }
 }
