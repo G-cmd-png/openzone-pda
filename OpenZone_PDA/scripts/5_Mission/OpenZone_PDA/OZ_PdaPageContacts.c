@@ -436,16 +436,30 @@ class OZ_PdaPageContacts : OZ_PdaPage
         string name = e.Name;
         if (e.Me)
         {
-            name += "   (you";
             // Невидимка бачить сама себе -- і мусить бачити, що вона
             // невидимка, інакше стан не видно ніде.
+            //
+            // Кожен із чотирьох підписів лежить у таблиці ЦІЛИМ рядком, з
+            // дужками й комою всередині. Склейка «(ви» + «, сховані від
+            // зони» + «)» вимагала б, щоб порядок слів і розділові знаки
+            // збігалися в усіх мовах -- а вони не збігаються, і саме так ці
+            // чотири підписи й лишалися англійськими до 2026-09-06.
+            //
+            // Підписи навмисно короткі: колонка імені -- 260 одиниць, а
+            // перше формулювання найширшого з них малювалось на 308
+            // (виміряно галереєю 2026-09-06).
+            string mark = "#STR_OZ_CONTACT_YOU";
             if (m_Data.MeHiddenZone && m_Data.MeHiddenContacts)
-                name += ", hidden from zone and contacts";
+                mark = "#STR_OZ_CONTACT_HIDDEN_BOTH";
             else if (m_Data.MeHiddenZone)
-                name += ", hidden from zone";
+                mark = "#STR_OZ_CONTACT_HIDDEN_ZONE";
             else if (m_Data.MeHiddenContacts)
-                name += ", hidden from contacts";
-            name += ")";
+                mark = "#STR_OZ_CONTACT_HIDDEN_CONTACTS";
+
+            // Ключ у СЕРЕДИНІ рядка движок не перекладає -- лише рядок, що
+            // ним починається. Тому переклад беремо руками, як це вже
+            // робить Where() нижче.
+            name += "   " + Widget.TranslateString(mark);
         }
         Put(w, "RowName", name);
 
