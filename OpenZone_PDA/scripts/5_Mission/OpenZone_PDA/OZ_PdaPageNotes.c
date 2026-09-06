@@ -107,22 +107,16 @@ class OZ_PdaPageNotes : OZ_PdaPage
             if (m_CurrentId == "" || m_Draft || !m_Book || !m_Book.Notes)
                 return true;
 
-            OZ_Note picked;
-            for (int ci = 0; ci < m_Book.Notes.Count(); ci++)
-            {
-                if (m_Book.Notes[ci].Id == m_CurrentId)
-                {
-                    picked = m_Book.Notes[ci];
-                    break;
-                }
-            }
-
-            if (!picked)
-                return true;
+            // ЇДЕ ТІЛЬКИ Id. Тіло записки лежить на пристрої, і сервер бере
+            // його звідти сам -- рівно так, як це вже робить експорт мітки з
+            // карти. Пересилати сюди текст означало б дозволити клієнтові
+            // покласти на чип що завгодно під іменем збереженої записки.
+            OZ_NoteRef ref_ = new OZ_NoteRef();
+            ref_.Id = m_CurrentId;
 
             string cjson;
             string cerr;
-            if (JsonFileLoader<OZ_Note>.MakeData(picked, cjson, cerr, false))
+            if (JsonFileLoader<OZ_NoteRef>.MakeData(ref_, cjson, cerr, false))
                 OZ_Rpc.Request(OZ_PdaConst.PAGE_NOTES, "carrier_add", cjson);
             return true;
         }

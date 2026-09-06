@@ -224,26 +224,17 @@ class OZ_ChatPush
 
 class OZ_ChatWho
 {
-    // Особу шукаємо серед тих, хто ЗАРАЗ на сервері, а не тримаємо посилання
-    // з моменту запиту: поки відповідь їхала до Discord і назад, гравець міг
-    // вийти, і збережена PlayerIdentity вказувала б у порожнечу.
+    // Особу шукаємо СВІЖОЮ, а не тримаємо посилання з моменту запиту: поки
+    // відповідь їхала до Discord і назад, гравець міг вийти, і збережена
+    // PlayerIdentity вказувала б у порожнечу.
+    //
+    // Через ядро, а не власним обходом GetPlayers: OZ_Link.Online робить те
+    // саме через OZ_Players.ManOf, тобто без обходу онлайну й без алокації
+    // рядка GetPlainId на кожного гравця. Копія тут була старшою за ядерну
+    // й пережила її появу.
     static PlayerIdentity Online(string uid)
     {
-        array<Man> players = new array<Man>();
-        GetGame().GetPlayers(players);
-
-        for (int i = 0; i < players.Count(); i++)
-        {
-            Man m = players[i];
-            if (!m)
-                continue;
-
-            PlayerIdentity id = m.GetIdentity();
-            if (id && id.GetPlainId() == uid)
-                return id;
-        }
-
-        return NULL;
+        return OZ_Link.Online(uid);
     }
 
     // Ім'я, від якого ГОВОРИТЬ пристрій: власника сесії, а не тримача.
@@ -628,19 +619,27 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             return "";
         }
 
-        string text = MiscGameplayFunctions.SanitizeString(s.Text);
-        if (text == "")
+        // ДОВЖИНУ МІРЯЄМО ДО БУДЬ-ЯКОГО РІЗАННЯ, і в цьому вся правка.
+        //
+        // Тут стояв ванільний SanitizeString, а він -- сліпий
+        // `Substring(0, 512)` по БАЙТАХ (miscgameplayfunctions.c:863). Тобто
+        // повідомлення на 513-1000 байтів приїжджало сюди вже обрізаним, і
+        // перевірка стелі бачила рівно 512 -- відмови не було ніколи, зате
+        // хвіст зникав мовчки, а різ на 512 припадав на середину кириличної
+        // пари. Стеля, яку оголошує Tuning.json, при цьому не діяла зовсім.
+        //
+        // Тепер міряємо те, що прислав клієнт, і відмовляємо словом
+        // (ТЗ-4 R-D1.3); ріже, якщо доведеться, наш різак по межі символу.
+        if (s.Text.Length() > OZ_PdaTune.ChatMsgMax())
         {
-            error = "STR_OZ_ERR_EMPTY_MSG";
+            error = "STR_OZ_ERR_MSG_TOO_LONG";
             return "";
         }
 
-        // ВІДМОВА, а не мовчазне усічення (ТЗ-4 R-D1.3): рядок, який гравець
-        // вважає надісланим, не має губити хвіст без жодного слова. Клієнт
-        // рахує ті самі байти й відмовляє раніше; це -- межа для нечесного.
-        if (text.Length() > OZ_PdaTune.ChatMsgMax())
+        string text = OZ_Text.Clip(s.Text, OZ_PdaTune.ChatMsgMax());
+        if (text == "")
         {
-            error = "STR_OZ_ERR_MSG_TOO_LONG";
+            error = "STR_OZ_ERR_EMPTY_MSG";
             return "";
         }
 

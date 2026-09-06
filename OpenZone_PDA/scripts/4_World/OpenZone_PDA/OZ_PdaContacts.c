@@ -447,7 +447,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
 
         OZ_PdaFlagOp flag;
         string err;
-        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err))
+        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
@@ -474,7 +474,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
 
         OZ_NameRef r;
         string err;
-        if (!JsonFileLoader<OZ_NameRef>.LoadData(json, r, err))
+        if (!JsonFileLoader<OZ_NameRef>.LoadData(json, r, err) || !r)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";

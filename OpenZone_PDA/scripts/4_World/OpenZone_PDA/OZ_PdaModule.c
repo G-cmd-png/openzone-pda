@@ -155,31 +155,47 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             if (!pda)
                 return "";
 
-            string payload = pda.OZ_MarkersJson();
-            if (payload == "")
-                payload = "{\"Version\":1,\"Items\":[]}";
-
-            int cnt = 0;
+            // РОЗБІР ОБОВ'ЯЗКОВИЙ, і саме цього тут бракувало.
+            //
+            // Нечитний блоб пам'яті приладу їхав на чип ДОСЛІВНО, з
+            // Records = 0, і операція звітувала успіх: гравець бачив
+            // «збережено», чип мовчки ніс сміття, а місткість носія рахувала
+            // це в нуль записів. Нотаткова гілка поруч робила правильно.
             OZ_MarkerList pl;
             string perr;
-            if (JsonFileLoader<OZ_MarkerList>.LoadData(payload, pl, perr) && pl && pl.Items)
-                cnt = pl.Items.Count();
+            if (!JsonFileLoader<OZ_MarkerList>.LoadData(pda.OZ_MarkersJson(), pl, perr) || !pl || !pl.Items)
+            {
+                // Порожня пам'ять -- законний стан, а не поломка: на чип іде
+                // порожній список.
+                if (pda.OZ_MarkersJson() != "")
+                {
+                    OZ_Log.Warn("carrier: unreadable markers on " + pda.GetType() + ", refusing to copy (" + perr + ")");
+                    error = "STR_OZ_ERR_PDA_INTERNAL";
+                    return "";
+                }
+                pl = new OZ_MarkerList();
+            }
+
+            int cnt = pl.Items.Count();
 
             // Місце питаємо в носія: на дискету йде стільки, скільки влазить
             // ПОРУЧ ІЗ ТИМ, ЩО НА НІЙ УЖЕ Є, -- перші зі списку, і відповідь
             // чесно каже скільки.
             int room = c.OZ_RoomFor(OZ_DataCarrier_Base.KIND_MARKS);
             int wrote = cnt;
-            if (room >= 0 && pl && pl.Items && cnt > room)
+            if (room >= 0 && cnt > room)
             {
                 pl.Items.Resize(room);
                 wrote = room;
+            }
 
-                if (!JsonFileLoader<OZ_MarkerList>.MakeData(pl, payload, perr, false))
-                {
-                    error = "STR_OZ_ERR_PDA_INTERNAL";
-                    return "";
-                }
+            // Пишемо ЗАВЖДИ розібраний і наново зібраний список, а не сирий
+            // рядок приладу: те, що ліг на чип, гарантовано читається.
+            string payload;
+            if (!JsonFileLoader<OZ_MarkerList>.MakeData(pl, payload, perr, false))
+            {
+                error = "STR_OZ_ERR_PDA_INTERNAL";
+                return "";
             }
 
             // Успіх -- лише після запису: OZ_Write ВІДМОВЛЯЄ, коли місця немає
@@ -1274,7 +1290,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         OZ_PdaPinAttempt att;
         string err;
-        if (!JsonFileLoader<OZ_PdaPinAttempt>.LoadData(json, att, err))
+        if (!JsonFileLoader<OZ_PdaPinAttempt>.LoadData(json, att, err) || !att)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
@@ -1383,7 +1399,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         OZ_PdaPinChange ch;
         string err;
-        if (!JsonFileLoader<OZ_PdaPinChange>.LoadData(json, ch, err))
+        if (!JsonFileLoader<OZ_PdaPinChange>.LoadData(json, ch, err) || !ch)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
@@ -1538,7 +1554,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         OZ_PdaFlagOp flag;
         string err;
-        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err))
+        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
@@ -1576,7 +1592,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
 
         OZ_PdaFlagOp flag;
         string err;
-        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err))
+        if (!JsonFileLoader<OZ_PdaFlagOp>.LoadData(json, flag, err) || !flag)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
@@ -1630,9 +1646,26 @@ class OZ_PdaModule : CF_ModuleWorld
 {
     private ref Timer m_BeaconTimer;
 
+    // Один живий модуль на сервер: аплаєр тюнінгу мусить дотягтися до його
+    // таймера, а тримати другий шлях до нього -- це другий спосіб помилитись.
+    private static OZ_PdaModule s_Inst;
+
     void BeaconTick()
     {
         OZ_PdaHandlerMap.PushBeacons();
+    }
+
+    // ПЕРІОД ПОСИЛОК ЧИТАВСЯ РІВНО ОДИН РАЗ, на старті місії. Адмін міняв
+    // BeaconPushSeconds у вкладці VPP, бачив «застосовано» -- і нічого не
+    // відбувалось до рестарту сервера. Аплаєр кличе це після ServerLoad.
+    static void RearmBeacons()
+    {
+        if (!s_Inst || !s_Inst.m_BeaconTimer)
+            return;
+
+        s_Inst.m_BeaconTimer.Stop();
+        s_Inst.m_BeaconTimer.Run(OZ_PdaTune.BeaconPushSeconds(), s_Inst, "BeaconTick", NULL, true);
+        OZ_Log.Info("pda: beacon push re-armed at " + OZ_PdaTune.BeaconPushSeconds().ToString() + "s");
     }
 
     override void OnInit()
@@ -1682,11 +1715,10 @@ class OZ_PdaModule : CF_ModuleWorld
     {
         super.OnMissionStart(sender, args);
 
-        if (GetGame().IsServer())
-            OZ_SyncExtras.OnFill().Insert(OZ_PdaSyncFill);
-
         if (!GetGame().IsServer())
             return;
+
+        OZ_SyncExtras.OnFill().Insert(OZ_PdaSyncFill);
 
         // Дерево каталогів профілю -- ПЕРШИМ рядком, до будь-якого читання
         // чи запису. Ядро будує його у своєму OnMissionStart, але порядок
@@ -1758,6 +1790,7 @@ class OZ_PdaModule : CF_ModuleWorld
         // Маячки транспондера РОЗСИЛАЄ сервер -- раз на кілька секунд тим,
         // у кого антена справді працює. Клієнт більше нічого не опитує:
         // на сорока гравцях це мінус десять запитів на секунду.
+        s_Inst = this;
         m_BeaconTimer = new Timer(CALL_CATEGORY_SYSTEM);
         m_BeaconTimer.Run(OZ_PdaTune.BeaconPushSeconds(), this, "BeaconTick", NULL, true);
 

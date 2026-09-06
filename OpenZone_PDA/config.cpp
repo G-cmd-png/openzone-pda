@@ -90,7 +90,8 @@ class CfgPatches
             "OZ_Module_Dosimeter",
             "OZ_Module_Antenna",
             "OZ_Module_SpyAntenna",
-            "OZ_Module_Decryptor"
+            "OZ_Module_Decryptor",
+            "OZ_Module_GPS"
         };
         weapons[] = {};
         requiredVersion = 0.1;

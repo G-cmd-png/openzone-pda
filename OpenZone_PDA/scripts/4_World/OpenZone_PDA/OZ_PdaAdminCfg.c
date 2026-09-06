@@ -71,6 +71,27 @@ class OZ_PdaTuningApplier : OZ_AdminCfgApplier
             return false;
 
         OZ_PdaTuning.ServerLoad();
+
+        // ЗАСТОСУВАННЯ -- ЦЕ НЕ ЛИШЕ ПЕРЕЧИТАТИ ФАЙЛ.
+        //
+        // Два числа з Tuning їдуть клієнтові пакетом синхронізації ядра, а
+        // третє живе в періоді серверного таймера. Без цих двох рядків
+        // «застосовано» означало «застосовано після рестарту»: тост і крок
+        // маршруту лишались старими в кожного, хто вже в Зоні, а посилки
+        // маячків ходили зі старим періодом до кінця запуску.
+        OZ_PdaModule.RearmBeacons();
+
+        array<Man> players = new array<Man>();
+        GetGame().GetPlayers(players);
+        for (int i = 0; i < players.Count(); i++)
+        {
+            if (!players[i])
+                continue;
+            PlayerIdentity id = players[i].GetIdentity();
+            if (id)
+                OZ_SyncSender.Send(id, "pda tuning applied");
+        }
+
         return true;
     }
 }

@@ -71,28 +71,55 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
             OZ_PDA_Base pda = OZ_PdaLookup.HeldByPlayer(pl);
             string sig = "";
-            OZ_BeaconPush push = new OZ_BeaconPush();
+
+            if (pda)
+            {
+                // ЗАМОК РАХУЄМО, А НЕ ЧИТАЄМО СТАРИЙ БІТ.
+                //
+                // Автоблокування ліниве: біт міняється лише тоді, коли
+                // OZ_EvaluateLock хтось покличе. Ворота сторінок кличуть його
+                // на кожен запит, а цей шлях -- ні: прилад, який мав замкнутись
+                // у рюкзаку, і далі отримував посилки маячків, поки власник не
+                // відкриє меню. Тобто «сховав і воно замкнулось» діяло на
+                // екран, але не на ефір.
+                OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
+                if (prof)
+                    pda.OZ_EvaluateLock(prof.LockAfterMinutes);
+            }
+
+            array<ref OZ_MapBeacon> found = new array<ref OZ_MapBeacon>();
 
             if (pda && pda.OZ_IsOn() && pda.OZ_IsUnlocked() && !OZ_PdaCapsule.IsFrozen(pda))
             {
                 float range = AntennaRange(pda);
                 if (range > 0)
                 {
-                    FillBeacons(id, pl, pda, range, push.Beacons);
-                    for (int b = 0; b < push.Beacons.Count(); b++)
-                        sig += push.Beacons[b].Name + "|" + push.Beacons[b].Pos + ";";
+                    FillBeacons(id, pl, pda, range, found);
+                    for (int b = 0; b < found.Count(); b++)
+                        sig += found[b].Name + "|" + found[b].Pos + ";";
                 }
             }
 
-            // Порожньо і минулого разу було порожньо -- мовчимо. Один
-            // порожній пуш на переході все ж їде: клієнт мусить стерти
-            // маячки, коли антена вимкнулась чи всі зникли.
+            // ТОЙ САМИЙ СПИСОК -- НЕ ШЛЕМО.
+            //
+            // Перевірка ловила лише «порожньо після порожнього», тобто той
+            // єдиний випадок, коли посилати справді нема чого. Список, що не
+            // змінився -- а він не змінюється, поки ніхто нікуди не пішов, --
+            // їхав повним конвертом кожні п'ять секунд кожному власникові
+            // антени. Порівняння підписів накриває обидва випадки.
             string last;
             if (!m_BeaconSig.Find(uid, last))
                 last = "";
-            if (sig == "" && last == "")
+            if (sig == last)
                 continue;
             m_BeaconSig.Set(uid, sig);
+
+            // Конверт будуємо ЛИШЕ коли є що слати: гравець без працюючої
+            // антени й гравець із незмінним списком не коштують тут жодної
+            // алокації. Раніше OZ_BeaconPush створювався для КОЖНОГО в
+            // онлайні на кожному тіку, ще до перевірки антени.
+            OZ_BeaconPush push = new OZ_BeaconPush();
+            push.Beacons = found;
 
             push.AdvanceM = OZ_PdaTune.RouteAdvanceM();
             push.ToastS   = OZ_PdaTune.ToastSeconds();
@@ -408,7 +435,38 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        pda.OZ_SetRouteJson(c.OZ_Route());
+        // НИТКУ ЗБИРАЄМО ЗАНОВО, а не копіюємо рядок чипа в пам'ять приладу.
+        //
+        // Копія була дослівною: жодного клипу назв, жодного перекарбування
+        // Id, жодного захисту від null-елемента -- усе те, що carrier_import
+        // робить для міток із того самого чипа. Тобто чужий чип клав у
+        // прилад точки з іменами будь-якої довжини й з id, які потім
+        // зіштовхувались із власними мітками гравця.
+        OZ_MarkerList route = new OZ_MarkerList();
+        for (int ri = 0; ri < incoming.Items.Count(); ri++)
+        {
+            OZ_MapMarker src = incoming.Items[ri];
+            if (!src)
+                continue;
+
+            OZ_MapMarker cp = new OZ_MapMarker();
+            s_Seq++;
+            cp.Id   = OZ_Time.NowUtc() + "#c" + s_Seq.ToString();
+            cp.Name = OZ_Text.Clip(src.Name, OZ_PdaTune.MarkerNameMax());
+            cp.Desc = OZ_Text.Clip(src.Desc, OZ_PdaTune.MarkerDescMax());
+            cp.Pos  = src.Pos;
+            route.Items.Insert(cp);
+        }
+
+        if (route.Items.Count() == 0)
+        {
+            error = "STR_OZ_ERR_ROUTE_EMPTY";
+            return "";
+        }
+
+        if (!FlushRoute(pda, route, error))
+            return "";
+
         ok = true;
         error = "";
         return "";

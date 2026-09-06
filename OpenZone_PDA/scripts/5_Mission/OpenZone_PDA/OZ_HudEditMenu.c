@@ -23,6 +23,18 @@ class OZ_HudEditMenu : UIScriptedMenu
     {
         layoutRoot = GetGame().GetWorkspace().CreateWidgets("OpenZone_PDA/gui/layouts/oz_pda_hud_edit.layout");
 
+        // РОЗМІТКА МОГЛА НЕ ЗАВАНТАЖИТИСЬ, і далі тут було звернення до null.
+        //
+        // Файла немає, ім'я класу віджета невідоме рушію, pbo зібрано без
+        // gui/ -- CreateWidgets віддає null мовчки. Наступний рядок валив
+        // клієнта посеред відкриття меню; OZ_PdaMenu на цьому ж місці ловить
+        // це логом і закривається в OnShow.
+        if (!layoutRoot)
+        {
+            OZ_Log.Error("pda hud edit: layout failed to load");
+            return null;
+        }
+
         m_BtnApply  = ButtonWidget.Cast(layoutRoot.FindAnyWidget("BtnHudApply"));
         m_BtnReset  = ButtonWidget.Cast(layoutRoot.FindAnyWidget("BtnHudReset"));
         m_BtnCancel = ButtonWidget.Cast(layoutRoot.FindAnyWidget("BtnHudCancel"));
@@ -79,6 +91,17 @@ class OZ_HudEditMenu : UIScriptedMenu
     override void OnShow()
     {
         super.OnShow();
+
+        // Те саме, що робить OZ_PdaMenu: розмітки немає -- меню-привид
+        // закриваємо самі, замість того щоб лишати гравця з відібраним
+        // керуванням над порожнім екраном.
+        if (!GetLayoutRoot())
+        {
+            OZ_Log.Error("pda hud edit layout failed to load - closing to avoid a ghost menu");
+            GetGame().GetUIManager().CloseMenu(OZ_PdaConst.MENU_PDA_HUD);
+            return;
+        }
+
         GetGame().GetUIManager().ShowUICursor(true);
         GetGame().GetMission().PlayerControlDisable(INPUT_EXCLUDE_ALL);
     }

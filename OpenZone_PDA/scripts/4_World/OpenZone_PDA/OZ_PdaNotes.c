@@ -46,17 +46,17 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         ok    = false;
         error = "STR_OZ_ERR_UNKNOWN_OP";
 
-        // Експорт на носій: тіло записки клієнт має з list і шле сам, чип
-        // лежить у слоті. Пристрій цій операції не потрібен.
-        if (op == "carrier_add")
-            return CarrierAdd(json, sender, ok, error);
-
         OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
         if (!pda)
         {
             error = "STR_OZ_ERR_NO_DEVICE";
             return "";
         }
+
+        // Експорт на носій. ПРИСТРІЙ ПОТРІБЕН: тіло записки береться з нього,
+        // а не з конверта клієнта -- див. CarrierAdd.
+        if (op == "carrier_add")
+            return CarrierAdd(json, pda, sender, ok, error);
 
         // КАПСУЛА читається, але не пишеться. Зрізати книжку нема по чому
         // й не треба: після заморозки в неї ніхто нічого не допише, тож
@@ -129,27 +129,52 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
 
     // Одна записка на чип, за вибором гравця. Повторний експорт тієї самої
     // (той самий Id) оновлює її на чипі, а не плодить копію.
-    private string CarrierAdd(string json, PlayerIdentity sender, out bool ok, out string error)
+    //
+    // ЇДЕ ТІЛЬКИ Id, А ТІЛО БЕРЕТЬСЯ З ПРИСТРОЮ.
+    //
+    // Було навпаки: клієнт присилав ЗАПИСКУ ЦІЛКОМ, і сервер писав на чип те,
+    // що прислали, обрізавши до стель. Тобто підроблений запит клав на носій
+    // будь-який текст під будь-яким Id -- записку, якої в приладі немає й не
+    // було, а потім вона імпортувалась назад у будь-який інший КПК як
+    // «знайдена на чипі». Карта для міток так не робила ніколи: там Id, і
+    // сервер шукає мітку в себе.
+    private string CarrierAdd(string json, OZ_PDA_Base pda, PlayerIdentity sender, out bool ok, out string error)
     {
         ok = false;
 
-        OZ_Note n;
+        OZ_NoteRef r;
         string err;
-        if (!JsonFileLoader<OZ_Note>.LoadData(json, n, err) || !n || n.Id == "")
+        if (!JsonFileLoader<OZ_NoteRef>.LoadData(json, r, err) || !r || r.Id == "")
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
         }
 
-        // Той самий санітар, що й у збереження: клієнт шле тіло сам. Id теж
-        // приходить від клієнта й лягає в пейлоад чипа назавжди -- без
-        // стелі підроблений carrier_add ніс би на чип мегабайтний Id (RPC
-        // склеює частини без обмеження), який потім щоразу серіалізується у
-        // ModStorage і їде назад кожному, хто натисне VIEW. Id -- це наш
-        // "дата#seq", ~24 байти; 64 з запасом.
-        n.Id    = OZ_Text.Clip(n.Id, 64);
-        n.Title = OZ_Text.Clip(n.Title, OZ_PdaTune.NoteTitleMax());
-        n.Body  = OZ_Text.Clip(n.Body, OZ_PdaTune.NoteBodyMax());
+        OZ_NoteBook mine = BookOf(pda);
+        OZ_Note found;
+        for (int fi = 0; fi < mine.Notes.Count(); fi++)
+        {
+            if (mine.Notes[fi] && mine.Notes[fi].Id == r.Id)
+            {
+                found = mine.Notes[fi];
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            error = "STR_OZ_ERR_NO_NOTE";
+            return "";
+        }
+
+        // КОПІЯ, а не сам об'єкт книжки: те, що ляже на чип, живе далі
+        // окремим життям, і правка записки в приладі не мусить його чіпати.
+        OZ_Note n = new OZ_Note();
+        n.Id        = found.Id;
+        n.Title     = found.Title;
+        n.Body      = found.Body;
+        n.CreatedAt = found.CreatedAt;
+        n.EditedAt  = found.EditedAt;
 
         OZ_DataCarrier_Base c = OZ_CarrierOps.ResolveWritable(sender, error);
         if (!c)
