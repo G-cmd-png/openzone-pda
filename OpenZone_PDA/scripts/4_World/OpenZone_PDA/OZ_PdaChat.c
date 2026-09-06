@@ -120,6 +120,12 @@ class OZ_ChatColors
         if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, err) || !v || !v.Lines)
             return json;
 
+        // Копія до першого фарбування: корінь тут скриптовий, а Lines і
+        // кожен рядок у ньому виділив серіалізатор -- і рядок n читається
+        // вже після n-1 пошуків кольору, кожен з яких виділяє пам'ять.
+        // Далі серіалізується САМЕ КОПІЯ: це те, що поїде клієнтові.
+        v = v.Copy();
+
         for (int i = 0; i < v.Lines.Count(); i++)
             Paint(v.Lines[i]);
 
@@ -414,6 +420,17 @@ class OZ_ChatSink : OZ_BridgeSink
             return;
         }
 
+        // КОПІЇ ТУТ НЕ ТРЕБА, і це рішення, а не пропуск. OZ_ChatPush --
+        // плаский клас: жодного ref-члена, самі скаляри, а корінь створює
+        // скрипт рядком вище. Тому все, що приїхало, лежить у скриптовому
+        // об'єкті, і Copy() для такого класу був би обрядом (шапка
+        // OZ_ConfigBase; правило COPY/LEAVE -- task-57b-trap-sweep.md).
+        //
+        // Одержувача все ж знімаємо в локальну змінну ЗАРАЗ: нижче стоять
+        // ColorFor, MakeData і new array, і читати після них зручніше з
+        // рядка, який точно наш.
+        string toUid = p.Uid;
+
         p.WhoColor = OZ_ChatColors.ColorFor(p.AUid);
         p.AUid = "";
 
@@ -423,7 +440,7 @@ class OZ_ChatSink : OZ_BridgeSink
             ejson = json;
 
         array<PlayerIdentity> tos = new array<PlayerIdentity>();
-        OZ_ChatWho.Holders(p.Uid, tos);
+        OZ_ChatWho.Holders(toUid, tos);
         for (int t = 0; t < tos.Count(); t++)
             OZ_Rpc.Respond(tos[t], OZ_PdaConst.PAGE_CHAT, "line", true, ejson, "");
     }

@@ -346,6 +346,11 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 return "";
             }
 
+            // Копія ДО другого розбору: корінь тут скриптовий, а от Items і
+            // кожен його елемент виділив серіалізатор -- і читаються вони
+            // нижче, вже після розбору власного списку приладу.
+            incoming = incoming.Copy();
+
             OZ_PDA_Base pda = DeviceOf(sender, error);
             if (!pda)
                 return "";
@@ -452,6 +457,11 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 error = "STR_OZ_ERR_PDA_INTERNAL";
                 return "";
             }
+
+            // Копія ДО другого розбору: Notes і кожна записка в ньому --
+            // те, що виділив серіалізатор, а читаються вони нижче, вже
+            // після розбору власної книжки приладу.
+            book = book.Copy();
 
             // Записки -- пам'ять ПРИСТРОЮ: книжка чипа зливається в книжку
             // приладу тут же, синхронно. Межі й дедап ті самі, що в міток,
@@ -612,6 +622,20 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 return "";
             }
 
+            // Потрібну мітку знімаємо ДО другого розбору й одразу копіюємо:
+            // Items і кожен його елемент виділив серіалізатор, а Name, Pos
+            // і Desc читаються нижче, вже після розбору власного списку
+            // приладу. Копіюємо саме ЕЛЕМЕНТ, а не весь список: src.Copy()
+            // пропускає null-елементи, і після нього r.Index указував би на
+            // сусідню мітку.
+            OZ_MapMarker m = src.Items[r.Index];
+            if (!m)
+            {
+                error = "STR_OZ_ERR_PDA_INTERNAL";
+                return "";
+            }
+            m = m.Copy();
+
             OZ_PDA_Base pda = DeviceOf(sender, error);
             if (!pda)
                 return "";
@@ -636,12 +660,6 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 return "";
             }
 
-            OZ_MapMarker m = src.Items[r.Index];
-            if (!m)
-            {
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
             m.Name = OZ_Text.Clip(m.Name, OZ_PdaTune.MarkerNameMax());
             m.Desc = OZ_Text.Clip(m.Desc, OZ_PdaTune.MarkerDescMax());
 
@@ -682,11 +700,19 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 return "";
             }
 
-            if (!book.Notes[r.Index])
+            // Потрібну записку знімаємо ДО другого розбору й одразу
+            // копіюємо: Notes і кожен його елемент виділив серіалізатор, а
+            // Title і Body читаються нижче, вже після розбору власної
+            // книжки приладу. Копіюємо саме ЕЛЕМЕНТ, а не всю книжку:
+            // book.Copy() пропускає null-елементи, і після нього r.Index
+            // указував би на сусідню записку.
+            OZ_Note taken = book.Notes[r.Index];
+            if (!taken)
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
                 return "";
             }
+            taken = taken.Copy();
 
             // Записки -- пам'ять ПРИСТРОЮ: забрати з чипа означає
             // дописати в книжку приладу, без моста. Межі й дедап ті
@@ -718,8 +744,8 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 return "";
             }
 
-            string tN = OZ_Text.Clip(book.Notes[r.Index].Title, OZ_PdaTune.NoteTitleMax());
-            string bN = OZ_Text.Clip(book.Notes[r.Index].Body, OZ_PdaTune.NoteBodyMax());
+            string tN = OZ_Text.Clip(taken.Title, OZ_PdaTune.NoteTitleMax());
+            string bN = OZ_Text.Clip(taken.Body, OZ_PdaTune.NoteBodyMax());
 
             for (int dn = 0; dn < mineN.Notes.Count(); dn++)
             {

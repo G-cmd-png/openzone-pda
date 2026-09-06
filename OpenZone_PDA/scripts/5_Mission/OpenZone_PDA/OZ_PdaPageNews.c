@@ -233,7 +233,7 @@ class OZ_PdaPageNews : OZ_PdaPage
 
             MultilineTextWidget body = MultilineTextWidget.Cast(Wgt("PostBody"));
             if (body)
-                body.SetText(v.Body);
+                body.SetText(pbody);
 
             // The spacer measures itself only on Update(): a new post's text
             // keeps the old height until the next relayout without it.

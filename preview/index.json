@@ -8,7 +8,7 @@
     {"name": "page-map", "layout": "OpenZone_PDA/gui/layouts/oz_pda_page_map.layout", "host": "1282 518", "fixture": "preview/map.json",
      "note": "the marker panel open, six rows in it; the fixture hides the map itself, because a MapWidget paints over every neighbour and the panel would be under it in a still. The first row is the worst case the server can send: a name at the 32-byte cap, the tracked marker's coordinates with a distance, and a description already cut to the 64 bytes RebuildRows leaves it"},
     {"name": "page-contacts", "layout": "OpenZone_PDA/gui/layouts/oz_pda_page_contacts.layout", "host": "640 518", "fixture": "preview/contacts.json",
-     "note": "half-width page; the faction page is its satellite"},
+     "note": "Half-width page; the faction page is its satellite. Four rows as OZ_PdaPageContacts.Row() builds them: a name, the longest faction name of the registry, and one of the four marks Where() can put in RowWhere -- each written as its stringtable key alone, because the engine translates a string that BEGINS with a key. A language round then renders all four, and this is the only still where the mark column can be measured against the faction column beside it. The fixture carries no note of its own: it travels to the bridge as ONE JSON string, ReadFromString truncates above 1023 bytes, and these thirteen ops already weigh 939."},
     {"name": "page-notes", "layout": "OpenZone_PDA/gui/layouts/oz_pda_page_notes.layout", "host": "1282 518", "fixture": "preview/notes.json"},
     {"name": "page-chat", "layout": "OpenZone_PDA/gui/layouts/oz_pda_page_chat.layout", "host": "1282 518", "fixture": "preview/chat.json",
      "note": "rows come from the fixture the way the script adds them; heights are the engine's"},

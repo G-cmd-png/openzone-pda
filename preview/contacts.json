@@ -1,10 +1,22 @@
 {
-  "note": "Four contact rows, as OZ_PdaPageContacts creates them. Each name is one of the four marks Row() glues after YOUR OWN name, written as its key alone: the engine translates a string that BEGINS with a key, so a key behind a name would stay raw. A language round then renders all four -- the only still that can show them, and what keeps them short: the name column is 260 units and the first wording of the widest mark drew 308.",
-  "ops": [
-    {"op": "add", "layout": "OpenZone_PDA/gui/layouts/oz_pda_contact_row.layout", "into": "ContactList", "count": 4},
-    {"op": "text", "name": "RowName", "nth": 1, "text": "#STR_OZ_CONTACT_YOU"},
-    {"op": "text", "name": "RowName", "nth": 2, "text": "#STR_OZ_CONTACT_HIDDEN_ZONE"},
-    {"op": "text", "name": "RowName", "nth": 3, "text": "#STR_OZ_CONTACT_HIDDEN_CONTACTS"},
-    {"op": "text", "name": "RowName", "nth": 4, "text": "#STR_OZ_CONTACT_HIDDEN_BOTH"}
-  ]
+ "ops": [
+  {
+   "op": "add",
+   "layout": "OpenZone_PDA/gui/layouts/oz_pda_contact_row.layout",
+   "into": "ContactList",
+   "count": 4
+  },
+  {"op": "text", "name": "RowName", "nth": 1, "text": "Тарас"},
+  {"op": "text", "name": "RowName", "nth": 2, "text": "Тарас"},
+  {"op": "text", "name": "RowName", "nth": 3, "text": "Тарас"},
+  {"op": "text", "name": "RowName", "nth": 4, "text": "Тарас"},
+  {"op": "text", "name": "RowFaction", "nth": 1, "text": "Чисте небо"},
+  {"op": "text", "name": "RowFaction", "nth": 2, "text": "Чисте небо"},
+  {"op": "text", "name": "RowFaction", "nth": 3, "text": "Чисте небо"},
+  {"op": "text", "name": "RowFaction", "nth": 4, "text": "Чисте небо"},
+  {"op": "text", "name": "RowWhere", "nth": 1, "text": "#STR_OZ_CONTACT_YOU"},
+  {"op": "text", "name": "RowWhere", "nth": 2, "text": "#STR_OZ_CONTACT_HIDDEN_ZONE"},
+  {"op": "text", "name": "RowWhere", "nth": 3, "text": "#STR_OZ_CONTACT_HIDDEN_CONTACTS"},
+  {"op": "text", "name": "RowWhere", "nth": 4, "text": "#STR_OZ_CONTACT_HIDDEN_BOTH"}
+ ]
 }

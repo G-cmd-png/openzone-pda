@@ -670,16 +670,24 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (!JsonFileLoader<OZ_ChatInvitees>.LoadData(json, inv, ierr) || !inv || !inv.Names)
                 return;
 
+            // Копія набору імен до циклу: AddItem нижче створює рядок
+            // списку, тобто виділяє пам'ять, а Names виділив серіалізатор --
+            // читати з нього після виділення вже не можна. Той самий хід, що
+            // в OZ_PdaContacts перед циклом new OZ_ContactEntry().
+            array<string> inames = new array<string>();
+            for (int ni = 0; ni < inv.Names.Count(); ni++)
+                inames.Insert(inv.Names[ni]);
+
             m_InviteNames.Clear();
             if (m_InviteList)
                 m_InviteList.ClearItems();
 
-            for (int ii = 0; ii < inv.Names.Count(); ii++)
+            for (int ii = 0; ii < inames.Count(); ii++)
             {
-                m_InviteNames.Insert(inv.Names[ii]);
+                m_InviteNames.Insert(inames[ii]);
                 if (m_InviteList)
                 {
-                    int irow = m_InviteList.AddItem(inv.Names[ii], NULL, 0);
+                    int irow = m_InviteList.AddItem(inames[ii], NULL, 0);
                     m_InviteList.SetItemColor(irow, 0, OZ_Palette.ACCENT);
                 }
             }
