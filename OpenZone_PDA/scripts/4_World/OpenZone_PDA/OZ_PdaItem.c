@@ -956,14 +956,44 @@ class OZ_PDA_Base : ItemBase
     string OZ_Snapshot()   { return m_Snapshot; }
     string OZ_SnapshotAt() { return m_SnapshotAt; }
 
-    // Пише лише сервер і лише поки пристрій онлайн.
-    void OZ_RefreshSnapshot(int playerEpoch, string json)
+    // ПІДПИС ЗНІМКА -- те, з чого його зібрали минулого разу.
+    //
+    // Не зберігається: після рестарту перший же статус перезбере знімок, і
+    // це дешевше, ніж тягнути рядок крізь сховище.
+    private string m_SnapSig = "";
+
+    string OZ_SnapshotSig() { return m_SnapSig; }
+
+    // ШТАМП -- ОКРЕМО ВІД ТІЛА, і це не дрібниця.
+    //
+    // m_SnapshotAt -- мить, по якій ріжеться історія розмов, коли пристрій
+    // стане капсулою. Він мусить іти вперед на КОЖНОМУ живому статусі, інакше
+    // капсула замерзне на моменті останньої зміни складу друзів, і все, що
+    // власник наговорив після неї, не побачить ніхто.
+    //
+    // А от ТІЛО -- ім'я, фракція, база, імена контактів -- міняється раз на
+    // кілька годин, і перезбирати його разом із проходом по всіх друзях і
+    // серіалізацією кожні п'ять секунд на кожному живому приладі не було
+    // потреби ніколи.
+    void OZ_TouchSnapshot(int playerEpoch)
     {
         if (!GetGame().IsServer())
             return;
         if (!OZ_IsOnline(playerEpoch))
             return;
 
+        m_SnapshotAt = OZ_Time.NowUtc();
+    }
+
+    // Пише лише сервер і лише поки пристрій онлайн.
+    void OZ_RefreshSnapshot(int playerEpoch, string json, string sig)
+    {
+        if (!GetGame().IsServer())
+            return;
+        if (!OZ_IsOnline(playerEpoch))
+            return;
+
+        m_SnapSig    = sig;
         m_Snapshot   = json;
         m_SnapshotAt = OZ_Time.NowUtc();
     }
@@ -996,6 +1026,7 @@ class OZ_PDA_Base : ItemBase
         m_SessionEpoch = 0;
         m_Snapshot     = "";
         m_SnapshotAt   = "";
+        m_SnapSig      = "";
 
         m_MarkersJson = "";
         m_NotesJson   = "";

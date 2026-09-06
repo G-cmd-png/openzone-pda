@@ -641,8 +641,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
         OZ_MarkerList list = LoadMarkers(pda);
 
-        int limit = MarkerLimit(pda);
-        if (list.Items.Count() >= limit)
+        // `have >= free + have` -- це просто `free <= 0`, і в цьому вигляді
+        // воно не змушує розбирати документ удруге.
+        if (pda.OZ_Free() <= 0)
         {
             error = "STR_OZ_ERR_MARKERS_FULL";
             return "";
@@ -795,15 +796,15 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     }
 
     // Стеля міток -- ПАМ'ЯТЬ ПРИЛАДУ, спільна з нотатками, маршрутом і
-    // розділами чужих модулів. Підпис лишився з профілем, бо всі виклики
-    // мають його під рукою, але число тепер не з профілю, а з пристрою.
-    private int MarkerLimit(OZ_PDA_Base pda)
+    // розділами чужих модулів: вільні ячейки плюс ті, що вже зайняли власні
+    // мітки (їх стеля не забороняє, а лише перелічує).
+    //
+    // Число `have` ПРИХОДИТЬ ЗЗОВНІ. Функція розбирала документ міток сама --
+    // а кликали її рівно там, де список уже розібраний, і виходило два повні
+    // розбори JSON на один запит. Гейти («чи є куди класти») її більше не
+    // питають узагалі: там питання до вільного місця, і воно однорядкове.
+    private int MarkerLimit(OZ_PDA_Base pda, int have)
     {
-        OZ_MarkerList list = LoadMarkers(pda);
-        int have = 0;
-        if (list && list.Items)
-            have = list.Items.Count();
-
         return pda.OZ_Free() + have;
     }
 
@@ -870,9 +871,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             st.Markers = LoadMarkers(pda).Items;
             st.Route   = LoadRouteOf(pda).Items;
 
-            OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
-            if (prof)
-                st.MarkerLimit = MarkerLimit(pda);
+            // Стеля -- ПАМ'ЯТЬ ПРИЛАДУ, а не число з профілю: гейт «є профіль»
+            // тут лишався від тих часів, коли межа міток жила в Profiles.json,
+            // і єдиним його наслідком був зайвий пошук профілю.
+            st.MarkerLimit = MarkerLimit(pda, st.Markers.Count());
         }
 
         // Без антени слухати нема чим -- і це не порожній список, а окремий

@@ -11,6 +11,11 @@
 class OZ_PdaMenu : UIScriptedMenu
 {
     private Widget m_TabRail;
+    // Три комірки смуги стану. Знаходяться раз при відкритті, а не по імені
+    // на кожному з двох малювальників щосекунди.
+    private TextWidget m_StatusLeft;
+    private TextWidget m_StatusMid;
+    private TextWidget m_StatusRight;
     private Widget m_PageHost;
     private Widget m_LockPanel;
     private Widget m_InitPanel;
@@ -65,6 +70,9 @@ class OZ_PdaMenu : UIScriptedMenu
             return null;
 
         m_TabRail   = layoutRoot.FindAnyWidget("TabRail");
+        m_StatusLeft  = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusLeft"));
+        m_StatusMid   = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusMid"));
+        m_StatusRight = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusRight"));
         m_PageHost  = layoutRoot.FindAnyWidget("PageHost");
         m_LockPanel = layoutRoot.FindAnyWidget("LockPanel");
         m_InitPanel = layoutRoot.FindAnyWidget("InitPanel");
@@ -135,6 +143,10 @@ class OZ_PdaMenu : UIScriptedMenu
 
         // Питаємо сервер, що в нас за пристрій. До відповіді стрічка порожня.
         OZ_Rpc.Request(OZ_PdaConst.PAGE_DEVICE, "status", "{}");
+
+        // Заряд і годинник -- ОДРАЗУ, не через секунду: таймер робить перший
+        // виток лише за період, і смуга стану відкривалась порожньою.
+        LocalStatusTick();
 
         if (!m_Refresh)
             m_Refresh = new Timer(CALL_CATEGORY_GUI);
@@ -1128,8 +1140,8 @@ class OZ_PdaMenu : UIScriptedMenu
     // годинник світу. Сервер тут ні до чого.
     private void LocalStatusTick()
     {
-        TextWidget left  = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusLeft"));
-        TextWidget right = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusRight"));
+        TextWidget left  = m_StatusLeft;
+        TextWidget right = m_StatusRight;
 
         OZ_PDA_Base dev = OZ_PdaHud.Device();
 
@@ -1163,60 +1175,36 @@ class OZ_PdaMenu : UIScriptedMenu
         }
     }
 
+    // СЕРЕДНЯ КОМІРКА -- І БІЛЬШ НІЩО.
+    //
+    // Заряд і годинник тут малювались теж, а LocalStatusTick переписує обидва
+    // щосекунди з локальної сутності й ігрового годинника -- тобто ця половина
+    // роботи жила рівно до наступного такту. Своє в цієї відповіді одне: чи
+    // пристрій ще онлайн, бо це знає лише сервер.
     private void PaintStatusBar(bool ok, string json)
     {
-        TextWidget left  = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusLeft"));
-        TextWidget mid   = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusMid"));
-        TextWidget right = TextWidget.Cast(layoutRoot.FindAnyWidget("StatusRight"));
+        if (!m_StatusMid)
+            return;
 
         if (!ok)
         {
-            if (left)  left.SetText("#STR_OZ_DEV_OFF");
-            if (mid)   mid.SetText("");
-            if (right) right.SetText("");
+            m_StatusMid.SetText("");
             return;
         }
 
         string err;
         OZ_PdaDeviceStatus st;
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
+        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err) || !st)
             return;
 
-        if (left)
-        {
-            if (!st.Powered)
-                left.SetText("#STR_OZ_DEV_OFF");
-            else
-            {
-                int pct = Math.Round(st.Charge01 * 100);
-                string l = "#STR_OZ_DEV_POWER";
-                l += "  " + pct.ToString() + "%";
-                left.SetText(l);
-            }
-        }
-
-        if (mid)
-        {
-            if (st.Online)
-                mid.SetText("");
-            else
-                mid.SetText("#STR_OZ_DEV_OFFLINE_SHORT");
-        }
-
-        if (right)
-        {
-            // Час беремо ігровий: гравцеві потрібен час Зони, а не свій
-            // системний.
-            // GetHours/GetMinutes не існує -- рушій віддає дату цілком одним
-            // викликом: GetDate(out year, month, day, hour, minute).
-            int y, mo, d, h, m;
-            GetGame().GetWorld().GetDate(y, mo, d, h, m);
-            string tm = Pad2(h);
-            tm += ":" + Pad2(m);
-            right.SetText(tm);
-        }
+        if (st.Online)
+            m_StatusMid.SetText("");
+        else
+            m_StatusMid.SetText("#STR_OZ_DEV_OFFLINE_SHORT");
     }
 
+    // Двоцифровий запис -- у ядрі (OZ_Time.Pad2); тут лишається тонкий вхід,
+    // поки ядро не зробить свій публічним (записано в звіті задачі 52).
     private string Pad2(int v)
     {
         if (v < 10)

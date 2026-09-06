@@ -12,7 +12,8 @@
 //      працюють навіть тоді, коли Discord лежить.
 //
 // Стеля книжки -- ПАМ'ЯТЬ ПРИЛАДУ (Limits.Memory), спільна з мітками,
-// запасна -- OZ_PdaConst.NOTES_MAX.
+// маршрутом і розділами чужих модулів. Запасної немає й не було: константи
+// OZ_PdaConst.NOTES_MAX не існує з того дня, як пам'ять стала спільною.
 
 
 // Книжка цілком -- формат відповіді list. Той самий клас читала стара
@@ -20,8 +21,9 @@
 class OZ_NoteBook
 {
     int Version = 1;
-    // Стеля книжки, як її знає міст. 0 у старих знімках на чипах -- тоді
-    // читач бере власну OZ_PdaConst.NOTES_MAX як запасну.
+    // Стеля книжки, як її порахував прилад. 0 у знімку, знятому з чипа:
+    // у носія своя місткість, і книжка на ньому про пам'ять приладу нічого
+    // не знає.
     int Max = 0;
     // Читальня капсули: книжка зрізана по заморозці, писати нема куди.
     bool Frozen = false;
@@ -100,15 +102,14 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
     // Стеля записника -- це ПАМ'ЯТЬ ПРИЛАДУ, а не окреме число під нотатки.
     // Скільки їх влізе, залежить від того, скільки ячеек уже зайняли мітки,
     // маршрут і розділи чужих модулів: пам'ять одна на всіх.
-    private int LimitOf(OZ_PDA_Base pda)
+    //
+    // Число `have` ПРИХОДИТЬ ЗЗОВНІ: функція розбирала книжку сама, а кликали
+    // її там, де книжка вже розібрана -- два повні розбори JSON на запит.
+    //
+    // Вільне ПЛЮС своє: інакше вже записані нотатки рахувались би як чужа
+    // зайнятість і записник «повнішав» би від власного вмісту.
+    private int LimitOf(OZ_PDA_Base pda, int have)
     {
-        OZ_NoteBook book = BookOf(pda);
-        int have = 0;
-        if (book && book.Notes)
-            have = book.Notes.Count();
-
-        // Вільне ПЛЮС своє: інакше вже записані нотатки рахувались би як
-        // чужа зайнятість і записник «повнішав» від власного вмісту.
         return pda.OZ_Free() + have;
     }
 
@@ -242,7 +243,7 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
     private string List(OZ_PDA_Base pda, bool frozen, out bool ok, out string error)
     {
         OZ_NoteBook book = BookOf(pda);
-        book.Max    = LimitOf(pda);
+        book.Max    = LimitOf(pda, book.Notes.Count());
         book.Frozen = frozen;
 
         string outJson;
@@ -307,7 +308,8 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         }
         else
         {
-            if (book.Notes.Count() >= LimitOf(pda))
+            // `have >= free + have` -- це просто `free <= 0`.
+            if (pda.OZ_Free() <= 0)
             {
                 error = "STR_OZ_ERR_NOTES_FULL";
                 return "";

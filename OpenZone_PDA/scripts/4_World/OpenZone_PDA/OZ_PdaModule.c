@@ -1217,25 +1217,45 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 // ВЛАСНИКА СЕСІЇ -- пристрій говорить за нього, хто б не
                 // тримав. Штамп цього запису -- заразом МИТЬ ЗАМОРОЗКИ:
                 // коли епоха власника піде вперед, зріз історії ріжеться
-                // саме по ньому. Пишеться на кожен статус -- це пам'ять до
-                // першого сейву, дешевше за будь-який дросель.
-                OZ_PdaSnapshot snap = new OZ_PdaSnapshot();
-                snap.Owner   = ownPd.Name;
-                snap.Base    = OZ_Identity.Get().FactionName(OZ_Identity.Get().BaseOf(ownUid));
-                snap.Org     = OZ_Identity.Get().FactionName(OZ_Identity.Get().OrgOf(ownUid));
-                for (int sf = 0; sf < ownPd.Friends.Count(); sf++)
-                {
-                    // Ім'я з ТОГО САМОГО персонажа, а не з акаунта: у капсулі
-                    // мусить лишитись той, кого власник знав.
-                    OZ_PlayerData fr = OZ_PlayerStore.ByKey(ownPd.Friends[sf]);
-                    if (fr && fr.Name != "")
-                        snap.Contacts.Insert(fr.Name);
-                }
+                // саме по ньому.
+                //
+                // ШТАМП -- ЩОРАЗУ, ТІЛО -- КОЛИ ЗМІНИЛОСЬ. Знімок перезбирався
+                // й серіалізувався на КОЖЕН статус, тобто раз на п'ять секунд
+                // на кожному живому приладі, разом із проходом по всіх друзях
+                // власника й читанням файлу кожного з них. Складники знімка --
+                // ім'я, база, угруповання й склад записника -- міняються раз
+                // на години; підпис із них коштує склейку кількох рядків.
+                string sig = ownPd.Name;
+                sig += "|" + OZ_Identity.Get().BaseOf(ownUid);
+                sig += "|" + OZ_Identity.Get().OrgOf(ownUid);
+                sig += "|" + ownPd.Friends.Count().ToString();
+                if (ownPd.Friends.Count() > 0)
+                    sig += "|" + ownPd.Friends[ownPd.Friends.Count() - 1];
 
-                string snapJson;
-                string snapErr;
-                if (JsonFileLoader<OZ_PdaSnapshot>.MakeData(snap, snapJson, snapErr, false))
-                    pda.OZ_RefreshSnapshot(ownEpoch, snapJson);
+                if (sig == pda.OZ_SnapshotSig() && pda.OZ_Snapshot() != "")
+                {
+                    pda.OZ_TouchSnapshot(ownEpoch);
+                }
+                else
+                {
+                    OZ_PdaSnapshot snap = new OZ_PdaSnapshot();
+                    snap.Owner   = ownPd.Name;
+                    snap.Base    = OZ_Identity.Get().FactionName(OZ_Identity.Get().BaseOf(ownUid));
+                    snap.Org     = OZ_Identity.Get().FactionName(OZ_Identity.Get().OrgOf(ownUid));
+                    for (int sf = 0; sf < ownPd.Friends.Count(); sf++)
+                    {
+                        // Ім'я з ТОГО САМОГО персонажа, а не з акаунта: у
+                        // капсулі мусить лишитись той, кого власник знав.
+                        OZ_PlayerData fr = OZ_PlayerStore.ByKey(ownPd.Friends[sf]);
+                        if (fr && fr.Name != "")
+                            snap.Contacts.Insert(fr.Name);
+                    }
+
+                    string snapJson;
+                    string snapErr;
+                    if (JsonFileLoader<OZ_PdaSnapshot>.MakeData(snap, snapJson, snapErr, false))
+                        pda.OZ_RefreshSnapshot(ownEpoch, snapJson, sig);
+                }
             }
 
             if (!st.Online)
