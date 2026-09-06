@@ -251,7 +251,8 @@ class OZ_ChatWho
     // вона навмисна: рішення власника 2026-08-28.
     static string NameOf(string accUid, PlayerIdentity sender)
     {
-        OZ_PlayerData accPd = OZ_PlayerStore.Load(accUid);
+        // Peek: власник сесії приладу може бути де завгодно, зокрема офлайн.
+        OZ_PlayerData accPd = OZ_PlayerStore.Peek(accUid);
         if (accPd && accPd.Name != "")
             return accPd.Name;
         return sender.GetName();
@@ -687,7 +688,12 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         }
 
         string uid = m_Acc;
-        OZ_PlayerData me = OZ_PlayerStore.Load(uid);
+        OZ_PlayerData me = OZ_PlayerStore.Peek(uid);
+        if (!me)
+        {
+            error = "STR_OZ_ERR_NOT_CONTACT";
+            return "";
+        }
 
         string theirKey = UidByKeyIn(me.Friends, r.Key);
         if (theirKey == "")
@@ -716,7 +722,9 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         a.Uid       = uid;
         a.Name      = OZ_ChatWho.NameOf(uid, sender);
         a.OtherUid  = theirUid;
-        a.OtherName = OZ_PlayerStore.Load(theirUid).Name;
+        OZ_PlayerData themPd = OZ_PlayerStore.Peek(theirUid);
+        if (themPd)
+            a.OtherName = themPd.Name;
         a.MyKey     = OZ_PlayerStore.KeyOf(uid);
         a.OtherKey  = theirKey;
 
@@ -886,7 +894,12 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         // ВЛАСНИКА. На захопленому чужому терміналі (а він працює як термінал
         // власника -- рішення власника 2026-08-28) список показував своїх
         // друзів, і кожен вибір із нього повертав «не ваш контакт».
-        OZ_PlayerData me = OZ_PlayerStore.Load(m_Acc);
+        OZ_PlayerData me = OZ_PlayerStore.Peek(m_Acc);
+        if (!me)
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
 
         OZ_ChatInvitees inv = new OZ_ChatInvitees();
         for (int i = 0; i < me.Friends.Count(); i++)
@@ -897,7 +910,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             if (!OZ_PlayerStore.IsLive(me.Friends[i]))
                 continue;
 
-            OZ_PlayerData d = OZ_PlayerStore.Load(OZ_PlayerStore.UidOfKey(me.Friends[i]));
+            OZ_PlayerData d = OZ_PlayerStore.Peek(OZ_PlayerStore.UidOfKey(me.Friends[i]));
             if (d && d.Name != "")
                 inv.Names.Insert(d.Name);
         }
@@ -931,7 +944,12 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         // затягти будь-кого, знаючи ім'я, і група стала б способом писати
         // тим, хто цього не хотів. Чи має право сам запрошувач -- звіряє
         // міст: склад розмови знає він.
-        OZ_PlayerData me = OZ_PlayerStore.Load(uid);
+        OZ_PlayerData me = OZ_PlayerStore.Peek(uid);
+        if (!me)
+        {
+            error = "STR_OZ_ERR_NOT_CONTACT";
+            return "";
+        }
         string theirUid = UidByNameIn(me.Friends, add.Name);
         if (theirUid == "")
         {
@@ -992,7 +1010,7 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
             string uid = OZ_PlayerStore.UidOfKey(keys[i]);
 
-            OZ_PlayerData d = OZ_PlayerStore.Load(uid);
+            OZ_PlayerData d = OZ_PlayerStore.Peek(uid);
             if (!d || d.Name != name)
                 continue;
 

@@ -105,7 +105,15 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         ok = false;
 
         string myUid = m_Acc;
-        OZ_PlayerData me = OZ_PlayerStore.Load(myUid);
+        // Peek: рахунок приладу може належати тому, кого зараз у Зоні немає
+        // (захоплений живий термінал). Load завів би йому файл і тримав би
+        // запис у кеші до кінця сеансу.
+        OZ_PlayerData me = OZ_PlayerStore.Peek(myUid);
+        if (!me)
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
         PlayerBase mePlayer = OZ_PdaLookup.PlayerOf(sender);
 
         OZ_ContactList list = new OZ_ContactList();
@@ -163,6 +171,22 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             string charKey = OZ_PlayerStore.KeyOf(uid);
             bool isFriend = Has(me.Friends, charKey);
 
+            // У СПИСКУ -- ТІЛЬКИ КОНТАКТИ. І ти сам.
+            //
+            // Ані чужих, ані тих, хто поруч, ані незавершених обмінів. Обмін
+            // відбувається В СВІТІ -- дією з приладом у руках, наведеною на
+            // людину, -- тож у меню йому нема чого показувати. Раніше тут був
+            // увесь сервер, і це робило КПК списком гравців у кожного в кишені.
+            //
+            // ВІДСІВ СТОЇТЬ ПЕРШИМ, і це вже не лише про порядок читання.
+            // Список опитує раз на п'ять секунд КОЖНА відкрита сторінка
+            // контактів, а запис читався для КОЖНОГО, хто в Зоні, -- щоб за
+            // два рядки викинути всіх, хто не друг. Невидимість не-друга тут
+            // ні на що не впливає: його в списку немає в будь-якому разі, а
+            // seen читає лише AddOffline і лише по СВОЇХ ключах.
+            if (!isMe && !isFriend)
+                continue;
+
             // Сховався -- значить сховався ВІД УСІХ, і від друзів теж
             // (рішення власника 2026-08-28: перша редакція лишала друзям
             // видимість, і в грі це читалось як поломка). Схований друг
@@ -170,6 +194,8 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             // Зоні не видно, і байдуже чому.
             if (!isMe)
             {
+                // Load, а не Peek: цей uid щойно прийшов із GetPlayers, тобто
+                // людина в Зоні, і її запис має бути живим у кеші.
                 OZ_PlayerData d = OZ_PlayerStore.Load(uid);
 
                 // Від ЗАПИСНИКІВ -- геть зовсім: ключ у seen, і AddOffline
@@ -183,19 +209,6 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
                 if (d.HiddenFromZone)
                     continue;
             }
-
-            // У СПИСКУ -- ТІЛЬКИ КОНТАКТИ. І ти сам.
-            //
-            // Ані чужих, ані тих, хто поруч, ані незавершених обмінів. Обмін
-            // тепер відбувається В СВІТІ -- дією з приладом у руках, наведеною
-            // на людину, -- тож у меню йому нема чого показувати: ні кого
-            // додавати, ні кого приймати.
-            //
-            // Раніше тут був увесь сервер, і це робило КПК списком гравців у
-            // кожного в кишені. Тепер це записник: у ньому ті, з ким ти справді
-            // зустрічався.
-            if (!isMe && !isFriend)
-                continue;
 
             OZ_ContactEntry e = new OZ_ContactEntry();
             e.Name = id.GetName();
@@ -236,7 +249,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         //    відповісти нема кому.
         // Лише контакти. Вхідні пропозиції в списку більше не з'являються --
         // на них не відповідають з меню.
-        AddOffline(list, me.Friends, seen, "friend", myFaction);
+        AddOffline(list, me.Friends, seen, myFaction);
 
         // NPC-контакти -- окремим родом. Ім'я дає реєстр OZ_PdaNpc; NPC,
         // якого мод цього старту не зареєстрував, чесно не показується.
@@ -268,7 +281,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
     // -- ті, чиє життя скінчилось: у записнику вони лишаються назавжди й
     // виглядають рівно як будь-хто, хто давно не заходив. Різниці не видно
     // навмисно (рішення власника 2026-08-30): КПК не розповідає про смерть.
-    private void AddOffline(OZ_ContactList list, array<string> keys, array<string> seen, string rel, string myFaction)
+    private void AddOffline(OZ_ContactList list, array<string> keys, array<string> seen, string myFaction)
     {
         for (int i = 0; keys && i < keys.Count(); i++)
         {
@@ -294,7 +307,10 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             if (e.Name == "")
                 e.Name = "#STR_OZ_CONTACT_NONAME";
             e.Key  = OZ_Names.KeyOf(key);
-            e.Rel  = rel;
+            // Єдиний рід, який сюди доходить: список вхідних пропозицій зник
+            // разом із ask/accept, і параметр «rel» відтоді був завжди
+            // "friend" -- разом із гілкою if, що його перевіряла.
+            e.Rel  = "friend";
             e.Near = false;
 
             // КОЛИ ЙОГО БАЧИЛИ ОСТАННІЙ РАЗ. Для замороженого це мить його
@@ -302,30 +318,25 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             if (d)
                 e.LastSeen = d.LastSeen;
 
-            // Те саме правило, що й для присутніх: ролі -- лише контактам.
-            // Той, хто лише ПОПРОСИВСЯ, ще не контакт.
-            if (rel == "friend")
+            // Гравця немає на сервері -- постачальника питати нема про
+            // кого, лишається останнє відоме з його файлу. У замороженого
+            // це знімок його останнього дня.
+            string ofid = "";
+            string obase = "";
+            if (d)
             {
-                // Гравця немає на сервері -- постачальника питати нема про
-                // кого, лишається останнє відоме з його файлу. У замороженого
-                // це знімок його останнього дня.
-                string ofid = "";
-                string obase = "";
-                if (d)
-                {
-                    ofid  = d.SeenOrg;
-                    obase = d.SeenBase;
-                }
-
-                e.Org      = OZ_Identity.Get().FactionName(ofid);
-                e.OrgColor = OZ_Identity.Get().FactionColor(ofid, 255);
-                e.Base     = OZ_Identity.Get().FactionName(obase);
-
-                if (OZ_PlayerStore.IsLive(key))
-                    IdentifySeen(e, uid, myFaction, ofid);
-                else
-                    IdentifyFrozen(e, d, myFaction, ofid);
+                ofid  = d.SeenOrg;
+                obase = d.SeenBase;
             }
+
+            e.Org      = OZ_Identity.Get().FactionName(ofid);
+            e.OrgColor = OZ_Identity.Get().FactionColor(ofid, 255);
+            e.Base     = OZ_Identity.Get().FactionName(obase);
+
+            if (OZ_PlayerStore.IsLive(key))
+                IdentifySeen(e, uid, myFaction, ofid);
+            else
+                IdentifyFrozen(e, d, myFaction, ofid);
 
             list.Entries.Insert(e);
             seen.Insert(key);
@@ -395,28 +406,6 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         if (myFaction != "")
             mine = (ofid == myFaction);
         e.Mine = mine;
-    }
-
-    private string RelOf(OZ_PlayerData me, string uid, bool isFriend)
-    {
-        if (isFriend)
-            return "friend";
-        // Вхідні пропозиції -- типізований список зі строком (OZ_FriendReq),
-        // тому не Has, а пошук за ключем.
-        if (OZ_PdaContactSwap.IndexOfReq(me.FriendReq, uid) != -1)
-            return "got";
-        if (SentTo(me.SteamId, uid))
-            return "sent";
-        return "";
-    }
-
-    // Чи я вже просився до нього. Питаємо ЙОГО файл: вхідні запити лежать у
-    // того, кого просять, і другого списку «вихідних» ми не ведемо -- два
-    // списки про одне й те саме розходяться першої ж миті.
-    private bool SentTo(string myUid, string theirUid)
-    {
-        OZ_PlayerData them = OZ_PlayerStore.Load(theirUid);
-        return OZ_PdaContactSwap.IndexOfReq(them.FriendReq, myUid) != -1;
     }
 
     private bool WithinReach(PlayerBase me, Man other)

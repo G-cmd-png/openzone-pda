@@ -28,8 +28,16 @@ class OZ_PdaCapsule
         if (ownUid == "")
             return false;
 
-        OZ_PlayerData ownPd = OZ_PlayerStore.Load(ownUid);
-        return !pda.OZ_IsOnline(ownPd.SessionEpoch);
+        // Peek, а не Load: власник капсули за визначенням може бути офлайн, а
+        // Load завів би йому файл під першим-ліпшим uid, який хтось записав у
+        // сесію приладу, і тримав би його в кеші до кінця сеансу. Порожня
+        // відповідь означає «про такого нічого не знаємо» -- епоха нуль, тобто
+        // рівно те, що віддавав Load дефолтами.
+        OZ_PlayerData ownPd = OZ_PlayerStore.Peek(ownUid);
+        int ownEpoch = 0;
+        if (ownPd)
+            ownEpoch = ownPd.SessionEpoch;
+        return !pda.OZ_IsOnline(ownEpoch);
     }
 }
 

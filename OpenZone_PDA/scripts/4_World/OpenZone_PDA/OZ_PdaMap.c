@@ -780,7 +780,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // Контакти читають той самий рахунок (m_Acc) -- розбіжності немає.
         OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
         string myUid = AccountOf(sender, pda);
-        OZ_PlayerData mine = OZ_PlayerStore.Load(myUid);
+        // Peek: рахунок приладу може належати офлайновому власнику, і Load
+        // завів би йому файл на кожен погляд у карту з чужого термінала.
+        OZ_PlayerData mine = OZ_PlayerStore.Peek(myUid);
 
         OZ_MapState st = new OZ_MapState();
         st.Frozen = OZ_PdaCapsule.IsFrozen(pda);
@@ -793,7 +795,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             st.HasGps = pda.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
         if (st.HasGps && !st.Frozen)
             st.SelfPos = me.GetPosition().ToString(false);
-        if (mine.TransponderSet)
+        if (mine && mine.TransponderSet)
         {
             for (int ts = 0; ts < mine.TransponderSet.Count(); ts++)
                 st.TransponderSet.Insert(mine.TransponderSet[ts]);
@@ -871,12 +873,14 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             string ownerUid = otherUid;
             if (theirs.OZ_SessionUid() != "")
                 ownerUid = theirs.OZ_SessionUid();
-            OZ_PlayerData od = OZ_PlayerStore.Load(ownerUid);
+            // Peek: власник сесії чужого приладу може бути офлайн -- саме
+            // так і виглядає вкрадений живий термінал.
+            OZ_PlayerData od = OZ_PlayerStore.Peek(ownerUid);
 
             if (!Broadcasts(od, myUid))
             {
                 bool silent = true;
-                if (od.TransponderSet && od.TransponderSet.Count() > 0)
+                if (od && od.TransponderSet && od.TransponderSet.Count() > 0)
                     silent = false;
                 if (!spyEye || silent)
                     continue;
@@ -902,7 +906,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             // Ім'я -- власника сесії, координати -- держателя (R-B2.1a).
             OZ_MapBeacon b = new OZ_MapBeacon();
             b.Name = oid.GetName();
-            if (ownerUid != otherUid && od.Name != "")
+            if (ownerUid != otherUid && od && od.Name != "")
                 b.Name = od.Name;
             b.Pos  = other.GetPosition().ToString(false);
             outBeacons.Insert(b);
@@ -946,6 +950,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // записнику і/або своїм по угрупованню, і досить будь-якого одного.
     private bool Broadcasts(OZ_PlayerData them, string toUid)
     {
+        // Порожній запис -- це «нічого про нього не знаємо», а не «веде
+        // публічно»: Peek віддає null на того, чийого файлу на диску немає.
+        if (!them)
+            return false;
         if (!them.TransponderSet || them.TransponderSet.Count() == 0)
             return false;
 

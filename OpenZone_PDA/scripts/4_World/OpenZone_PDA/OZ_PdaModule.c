@@ -1182,9 +1182,13 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             OZ_PlayerData ownPd = null;
             if (ownUid != "")
             {
-                ownPd = OZ_PlayerStore.Load(ownUid);
-                ownEpoch = ownPd.SessionEpoch;
-                st.OwnerName = ownPd.Name;
+                // Peek: власник сесії може бути офлайн -- це і є капсула.
+                ownPd = OZ_PlayerStore.Peek(ownUid);
+                if (ownPd)
+                {
+                    ownEpoch = ownPd.SessionEpoch;
+                    st.OwnerName = ownPd.Name;
+                }
             }
 
             st.Owned       = pda.OZ_HasAnySession();
