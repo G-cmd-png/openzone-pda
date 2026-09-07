@@ -37,6 +37,17 @@ class OZ_NewsList
     // міст це перевірив, а не припустив.
     string Next = "";
 
+    // СТОРІНКУ ПОЧАЛИ СПОЧАТКУ, І ЦЕ НЕ ТЕ, ЧОГО ПРОСИЛИ.
+    //
+    // Курсор називає допис, а допис могли стерти між двома натисканнями ЩЕ.
+    // Міст тоді віддає найновішу сторінку -- порожня відповідь на непорожню
+    // стрічку була б гіршою, -- але це вже НЕ продовження: сторінка, яка
+    // доклала б її до наявних рядків, показала б верх стрічки двічі й не
+    // мала б із чого здогадатись. Тому міст каже це вголос, а сторінка на
+    // такій відповіді ЗАМІНЯЄ перелік замість докладати. Next при цьому
+    // порожній: хід, до якого належав курсор, скінчився.
+    bool Restarted = false;
+
     void OZ_NewsList()
     {
         Items = new array<ref OZ_NewsItem>();
@@ -47,7 +58,8 @@ class OZ_NewsList
     OZ_NewsList Copy()
     {
         OZ_NewsList c = new OZ_NewsList();
-        c.Next = Next;
+        c.Next      = Next;
+        c.Restarted = Restarted;
         if (Items)
         {
             for (int i = 0; i < Items.Count(); i++)
@@ -105,6 +117,12 @@ class OZ_NewsFail
     // оголосивши -- ось воно.
     ref array<string> Allowed;
 
+    // СКІЛЬКИ БАЙТІВ МОЖНА -- ЧИСЛОМ МОСТА (розбіжність 96). Їде з відмовою
+    // body_too_long; на решті нуль. Перевірка перед мостом каже стелю КПК, а
+    // це -- та, яку справді застосували: якщо адмін опустив Tuning, вони
+    // різні, і гравцеві потрібна друга.
+    int Max = 0;
+
     void OZ_NewsFail()
     {
         Allowed = new array<string>();
@@ -127,6 +145,9 @@ class OZ_NewsFail
             return "STR_OZ_ERR_NEWS_NO_BODY";
         if (code == "no_author")
             return "STR_OZ_ERR_NEWS_NO_AUTHOR";
+        // Стеля тіла -- слово моста, і воно везе своє число (розбіжність 96).
+        if (code == "body_too_long")
+            return "STR_OZ_ERR_TOO_LONG";
         if (code == "post_failed")
             return "STR_OZ_ERR_NEWS_POST_FAILED";
         return "STR_OZ_ERR_PDA_INTERNAL";
@@ -419,6 +440,18 @@ class OZ_PdaHandlerNews : OZ_PageHandler
             // Стеля -- та сама, що вже є у приладу для нотаток
             // (Tuning.NoteBodyMaxBytes, поставочно 1000 байтів): своєї
             // другої тут заводити нема чого. Length() в Enforce байтовий.
+            //
+            // І ВОНА НЕ БІЛЬША ЗА ЯДРОВУ: Validate клямпить Tuning по
+            // OZ_Const.NEWS_BODY_MAX, тобто по тому самому числу, яким міряє
+            // консоль VPP, і порівняння тут те саме -- строго більше
+            // (розбіжність 96: тіло рівно на тисячу байтів консоль
+            // відхиляла, а ця сторінка приймала).
+            //
+            // ЦЕ ЧЕМНІСТЬ, А НЕ ПРАВИЛО. Судить міст: він відповідає
+            // body_too_long і возить у відмові власну стелю, тож адмін, що
+            // опустив Tuning, не робить сторінку брехливою -- лише суворішою
+            // за міст, а межу, об яку спіткнулись, назве той, хто її й
+            // застосував.
             if (body.Length() > OZ_PdaTune.NoteBodyMax())
             {
                 string said = "news: post from " + uid + " rejected, body is ";

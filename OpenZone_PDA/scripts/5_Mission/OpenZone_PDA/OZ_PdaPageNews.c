@@ -237,6 +237,19 @@ class OZ_PdaPageNews : OZ_PdaPage
                     }
                 }
 
+                // ЗАДОВГЕ ТІЛО -- ЧИСЛОМ ТОГО, ХТО ВІДМОВИВ (розбіжність 96).
+                //
+                // Той самий ключ приходить і від власної перевірки сторінки,
+                // до мосту, -- у неї порожнє тіло, тож ця гілка мовчить, і
+                // гравець бачить своє число тоді, коли спіткнувся об своє.
+                if (error == "STR_OZ_ERR_TOO_LONG" && json != "")
+                {
+                    OZ_NewsFail tl = new OZ_NewsFail();
+                    string terr;
+                    if (JsonFileLoader<OZ_NewsFail>.LoadData(json, tl, terr) && tl && tl.Max > 0)
+                        said = said + "  " + tl.Max.ToString() + " b";
+                }
+
                 Refused(said);
                 return;
             }
@@ -321,7 +334,13 @@ class OZ_PdaPageNews : OZ_PdaPage
             // ДОКЛАДАЄМО, а не заміняємо, якщо це продовження. Перша
             // сторінка приходить з порожнім m_Next, і тоді стрічка
             // починається наново.
-            if (m_Busy && m_List && m_List.Items)
+            //
+            // РЕСТАРТ -- ЦЕ ЗАМІНА, ХОЧ БИ ЩО ДУМАЛА КНОПКА. Курсор називав
+            // допис, а допис стерли між двома натисканнями ЩЕ: міст віддає
+            // найновішу сторінку й каже Restarted. Докласти її означало б
+            // показати верх стрічки вдруге, під тими самими рядками, і
+            // жодного способу відрізнити половини в читача немає.
+            if (m_Busy && !page.Restarted && m_List && m_List.Items)
             {
                 for (int pi = 0; pi < page.Items.Count(); pi++)
                     m_List.Items.Insert(page.Items[pi]);
