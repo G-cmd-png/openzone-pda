@@ -591,11 +591,28 @@ class OZ_PdaPageDevice : OZ_PdaPage
 
             string line = "[" + (i + 1).ToString() + "]  ";
             if (bay.ClassName == "")
+            {
                 line += "#STR_OZ_DEV_BAY_EMPTY";
-            else if (bay.Display != "")
-                line += bay.Display;
+            }
             else
-                line += bay.ClassName;
+            {
+                if (bay.Display != "")
+                    line += bay.Display;
+                else
+                    line += bay.ClassName;
+
+                // РЕСУРС ПЛАТИ ПОРУЧ ІЗ ЇЇ ІМЕНЕМ (ТЗ-5 R-B2.9): гравець
+                // мусить бачити, скільки в неї лишилось, а не саму лише
+                // наявність. Вигоріла підписана словом -- раніше її гніздо
+                // просто виглядало порожнім.
+                if (bay.Burnt)
+                    line += "   " + Widget.TranslateString("#STR_OZ_DEV_BAY_BURNT");
+                else if (bay.LeftMin >= 0)
+                {
+                    line += "   " + bay.LeftMin.ToString();
+                    line += " " + Widget.TranslateString("#STR_OZ_MIN_SHORT");
+                }
+            }
 
             w.SetText(line);
         }

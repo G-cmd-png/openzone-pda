@@ -28,6 +28,16 @@ class OZ_BayInfo
     string Display  = "";
     string Kind     = "";
 
+    // РЕСУРС ПЛАТИ (ТЗ-5 R-B2.9): скільки хвилин роботи в ній лишилось.
+    // -1 -- у плати ресурсу немає взагалі (звичайна антена, GPS), і рядок
+    // про нього мовчить. Нуль разом із Burnt -- вигоріла.
+    int    LeftMin  = -1;
+    // Вигоріла плата НАЗИВАЄТЬСЯ, а не зникає: OZ_ModuleClass не віддає її
+    // нікому (мертва електроніка), тож без цього прапорця гніздо з
+    // почорнілою платою виглядало б порожнім -- саме те, що R-B2.9
+    // забороняє.
+    bool   Burnt    = false;
+
     OZ_BayInfo Copy()
     {
         OZ_BayInfo c = new OZ_BayInfo();
@@ -36,6 +46,8 @@ class OZ_BayInfo
         c.ClassName = ClassName;
         c.Display   = Display;
         c.Kind      = Kind;
+        c.LeftMin   = LeftMin;
+        c.Burnt     = Burnt;
         return c;
     }
 }

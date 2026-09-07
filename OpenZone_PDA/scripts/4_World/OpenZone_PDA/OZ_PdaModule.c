@@ -992,6 +992,38 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         return json;
     }
 
+    // СКІЛЬКИ ХВИЛИН РОБОТИ ЛИШИЛОСЬ У ПЛАТІ (ТЗ-5 R-B2.9), або -1, якщо
+    // ресурсу в неї немає взагалі.
+    //
+    // Ресурс живе В ПЛАТІ, не в конфізі: конфіг -- бюджет, предмет --
+    // лічильник (R-B2.5). Свіжа плата віддає -1 із власного лічильника, і
+    // це «повний бак», а не «невідомо»: скільки в ній хвилин, знає спека.
+    //
+    // Поки ресурс має рівно один рід плат -- шпигунська антена. Коли
+    // з'явиться другий (R-B2.3 обіцяє ResourceMinutes/ResourceMode усім),
+    // питати треба буде поведінку модуля, а не клас; єдиний рядок, який це
+    // зачепить, -- цей.
+    private int ResourceLeftMin(ItemBase item, OZ_ModuleSpec spec)
+    {
+        if (!spec)
+            return -1;
+        if (spec.SpyMinutes <= 0)
+            return -1;
+
+        OZ_Module_SpyAntenna plate = OZ_Module_SpyAntenna.Cast(item);
+        if (!plate)
+            return -1;
+
+        float leftS = plate.OZ_SpyLeftS();
+        if (leftS < 0)
+            leftS = spec.SpyMinutes * 60;
+        if (leftS < 0)
+            leftS = 0;
+
+        int mins = Math.Round(leftS / 60.0);
+        return mins;
+    }
+
     private string Status(PlayerIdentity sender, out bool ok, out string error)
     {
         ok = false;
@@ -1136,15 +1168,23 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             bay.Index   = b;
             bay.Visible = (b < prof.ModuleSlots);
 
-            string cls = pda.OZ_ModuleClass(b);
-            if (cls != "")
+            // ГНІЗДО ПИТАЄМО САМЕ, А НЕ ЧЕРЕЗ OZ_ModuleClass: той не віддає
+            // ВИГОРІЛУ плату (мертва електроніка), і саме тому екран показував
+            // її гніздо порожнім. ТЗ-5 R-B2.9 вимагає протилежного: вигоріла
+            // підписана прямо, а не відсутністю рядка.
+            EntityAI seat = pda.OZ_Attached(OZ_PdaConst.ModuleSlot(b));
+            ItemBase seatItem = ItemBase.Cast(seat);
+            if (seatItem)
             {
-                bay.ClassName = cls;
-                OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
+                bay.ClassName = seatItem.GetType();
+                bay.Burnt     = seatItem.IsRuined();
+
+                OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(bay.ClassName);
                 if (spec)
                 {
                     bay.Display = spec.DisplayName;
                     bay.Kind    = spec.Kind;
+                    bay.LeftMin = ResourceLeftMin(seatItem, spec);
                 }
             }
             st.Bays.Insert(bay);
