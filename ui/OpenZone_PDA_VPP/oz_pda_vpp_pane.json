@@ -134,7 +134,7 @@
                     {"hrow": {"h": "$size.field",
                       "note": "Admin-visible data only: nothing in the drain path multiplies this into energyUsagePerSecond (config.cpp) -- the label says so because the field would otherwise promise an effect the game does not have (finding 98, task 52).",
                       "children": [
-                      {"label": {"name": "HwPowerL", "w": 130, "text": "power (inert)", "font": "small", "color": "$muted"}},
+                      {"label": {"name": "HwPowerL", "w": 130, "text": "power factor", "font": "small", "color": "$muted"}},
                       {"field": {"name": "HwPower", "w": 250}}
                     ]}},
                     {"hrow": {"h": "$size.field", "children": [

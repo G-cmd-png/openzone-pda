@@ -219,12 +219,13 @@ class CfgVehicles
             // carried; the battery keeps draining, which is the intended
             // friction.
             autoSwitchOffWhenInCargo = 0;
-            // 0.5 per minute, flat, whatever sits in the module bays. Each
-            // OZ_ModuleSpec.PowerFactor is admin-visible data in
-            // Hardware.json and the VPP form only -- nothing multiplies it
-            // into this rate today, so raising it does not raise the drain
-            // (finding 98, task 52; owner decision pending on whether it
-            // should).
+            // THE STARTING VALUE ONLY: 0.5 per minute, the rate of a device
+            // with empty bays. The real rate is set from script on every
+            // attach, detach and power-on -- OZ_PDA_Base.OZ_ApplyDrain
+            // multiplies the profile's PowerDrainPerMin by the PowerFactor
+            // of every inserted board and calls SetEnergyUsage (TZ-5
+            // R-B2.2). Editing the number here changes nothing but the
+            // first tick of a device whose class is in no profile.
             energyUsagePerSecond = 0.0083;
             // Stores nothing itself: it lives off the attached battery.
             energyStorageMax = 0;

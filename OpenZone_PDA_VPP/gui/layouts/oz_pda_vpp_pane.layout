@@ -2324,7 +2324,7 @@ FrameWidgetClass OZ_PdaVppPane {
                    vexactsize 1
                    color 0.58 0.65 0.71 1
                    priority 0
-                   text "power (inert)"
+                   text "power factor"
                    font "gui/fonts/sdf_MetronBook24"
                    "exact text" 1
                    "exact text size" 13

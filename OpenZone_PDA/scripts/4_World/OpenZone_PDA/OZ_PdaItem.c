@@ -302,6 +302,11 @@ class OZ_PDA_Base : ItemBase
     // інакше кожен attach скидав би відлік уже запущеного тіка.
     private void ArmModuleTicks()
     {
+        // Набір плат міг змінитись -- отже могла змінитись і витрата.
+        // Одна точка на обидва наслідки: сюди приходять attach, detach,
+        // вмикання (OnWorkStart) і прокидання вже ввімкненим (RefreshPower).
+        OZ_ApplyDrain();
+
         if (!m_IsOn)
         {
             StopModuleTicks();
@@ -329,6 +334,58 @@ class OZ_PDA_Base : ItemBase
         m_LastTickMs  = GetGame().GetTime();
         m_ModuleTimer.Run(m_TickPeriod, this, "ModuleTick", NULL, true);
         OZ_Log.Dbg("pda module tick armed at " + m_TickPeriod.ToString() + "s on " + GetType());
+    }
+
+    // ВИТРАТА = БАЗА ПРОФІЛЮ x ДОБУТОК PowerFactor ВСТАВЛЕНИХ ПЛАТ
+    // (ТЗ-5 R-B2.2). До цієї правки витрата була одним плоским числом у
+    // config.cpp, а PowerFactor у Hardware.json -- позначкою, яку не читав
+    // ніхто: адмін піднімав множник радіометра до двійки й не бачив у грі
+    // нічого. Тепер важіль працює в обидва боки, і тир приладу нарешті
+    // означає щось у батареї, а не лише в наборі сторінок.
+    //
+    // Рушій зберігає витрату ЗА СЕКУНДУ (componentenergymanager.c:1843:
+    // consume_energy = GetEnergyUsage() * секунди), профіль оголошує її за
+    // хвилину -- ділення на 60 стоїть тут, в одному місці.
+    //
+    // OZ_ModuleClass, а не сирий обхід гнізд: він уже знімає з рахунку
+    // плату у СХОВАНОМУ відсіку (ТЗ-4 R-F2.1) і ВИГОРІЛУ плату
+    // (IsRuined) -- і те, і те не працює, отже й не їсть.
+    void OZ_ApplyDrain()
+    {
+        if (!GetGame().IsServer())
+            return;
+        if (!HasEnergyManager())
+            return;
+
+        float perMin = OZ_PdaConst.DRAIN_DEFAULT;
+        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
+        if (prof && prof.PowerDrainPerMin > 0)
+            perMin = prof.PowerDrainPerMin;
+
+        float factor = 1.0;
+        for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
+        {
+            string cls = OZ_ModuleClass(i);
+            if (cls == "")
+                continue;
+
+            OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
+            if (!spec)
+                continue;
+            if (spec.PowerFactor <= 0)
+                continue;
+
+            factor = factor * spec.PowerFactor;
+        }
+
+        float perSec = (perMin * factor) / 60.0;
+        GetCompEM().SetEnergyUsage(perSec);
+
+        string dl = "pda drain: " + GetType();
+        dl += " base=" + perMin.ToString();
+        dl += "/min factor=" + factor.ToString();
+        dl += " -> " + (perMin * factor).ToString() + "/min";
+        OZ_Log.Dbg(dl);
     }
 
     private void StopModuleTicks()
@@ -1455,8 +1512,8 @@ class OZ_PDA_Base : ItemBase
 
         // Втратив живлення посеред злому -- злам ПЕРЕРВАНО, не «на паузі».
         // Дешифратор рахує безперервно за годинником гри, а не тіками
-        // модуля (PowerFactor 2.0 у Hardware.json -- лише позначка
-        // складності, на витрату він не впливає); лінива OZ_EvaluateCrack
+        // модуля (PowerFactor 2.0 у Hardware.json описує його апетит до
+        // батареї, а не швидкість злому); лінива OZ_EvaluateCrack
         // ловить лише стан «у цю мить» і проґавила б вимкнення між стартом і
         // поглядом -- гравець вимкнув, зачекав без батареї, увімкнув і
         // відкрив за нуль енергії. Перериваємо саме тут, ПОДІЄЮ втрати
