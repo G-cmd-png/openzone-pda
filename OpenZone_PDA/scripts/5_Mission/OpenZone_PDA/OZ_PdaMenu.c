@@ -773,6 +773,7 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
 
         m_HasPin = st.HasPin;
+        SetPinLength(st.PinLength);
 
         // Нічийний пристрій -- ЕКРАН ІНІЦІАЦІЇ замість сторінок: після
         // factory reset (чи зі свіжим приладом) єдина доступна дія --
@@ -917,6 +918,7 @@ class OZ_PdaMenu : UIScriptedMenu
         // спитає status і збудує стрічку. Окремого сигналу «зламано» не
         // треба саме тому.
         m_Sealed = st.Sealed;
+        SetPinLength(st.PinLength);
 
         // Поки йде злам, RefreshTick питає sealed щосекунди (живий відлік);
         // без зламу -- раз на 5 секунд, екран коду статичний.
@@ -1202,12 +1204,36 @@ class OZ_PdaMenu : UIScriptedMenu
         if (digit != "0" && digit.ToInt() == 0)
             return false;
 
-        if (m_PinBuffer.Length() < 4)
+        if (m_PinBuffer.Length() < m_PinLength)
         {
             m_PinBuffer += digit;
             PaintPinDots();
         }
         return true;
+    }
+
+    // ДОВЖИНА КОДУ ПРИЇЖДЖАЄ З СЕРВЕРА (ТЗ-5 R-B3.3): поле профілю
+    // OZ_PdaDeviceStatus.PinLength. Тут стояла четвірка двома літералами --
+    // у наборі й у крапках, -- і вона була ЄДИНИМ правилом на весь мод:
+    // сервер довжини не перевіряв узагалі.
+    //
+    // Умовчання лишається, і воно те саме: відповідь від сервера, який про
+    // це поле ще не знає (нуль), не мусить лишати гравця з падом, що не
+    // приймає жодної цифри.
+    private int m_PinLength = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+
+    private void SetPinLength(int len)
+    {
+        if (len <= 0)
+            return;
+        if (len == m_PinLength)
+            return;
+
+        m_PinLength = len;
+        // Набране до зміни -- уже не за тим правилом. Чистимо, а не ріжемо:
+        // половина коду в буфері гірша за порожній.
+        m_PinBuffer = "";
+        PaintPinDots();
     }
 
     private void PaintPinDots()
@@ -1217,7 +1243,7 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
 
         string s = "";
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < m_PinLength; i++)
         {
             if (i < m_PinBuffer.Length())
                 s += "*";

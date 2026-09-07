@@ -777,7 +777,8 @@ class OZ_PDA_Base : ItemBase
             // лог. Підібрати його не можна не тому, що він складний, а тому
             // що його не існує в жодній голові.
             m_Pin = "";
-            for (int pd = 0; pd < PIN_DIGITS; pd++)
+            int pinLen = OZ_PinLength();
+            for (int pd = 0; pd < pinLen; pd++)
                 m_Pin += Math.RandomInt(0, 10).ToString();
 
             m_HasPinS  = true;
@@ -1157,10 +1158,11 @@ class OZ_PDA_Base : ItemBase
         if (pin == "")
             return true;
 
-        if (pin.Length() != PIN_DIGITS)
+        int want = OZ_PinLength();
+        if (pin.Length() != want)
             return false;
 
-        for (int i = 0; i < PIN_DIGITS; i++)
+        for (int i = 0; i < want; i++)
         {
             int c = pin.Get(i).ToAscii();
             if (c < 48 || c > 57)   // '0'..'9'
@@ -1169,9 +1171,23 @@ class OZ_PDA_Base : ItemBase
         return true;
     }
 
-    // Скільки цифр у коді. Те саме число, яким пад малює свої кнопки, і те
-    // саме, яким сервер сіє код запечатаного приладу.
-    static const int PIN_DIGITS = 4;
+    // СКІЛЬКИ ЦИФР У КОДІ -- ПИТАННЯ ПРОФІЛЮ (ТЗ-5 R-B3.3).
+    //
+    // Число одне на три місця: сервер перевіряє ним форму коду, він же сіє
+    // код запечатаного приладу, і воно ж їде клієнтові в
+    // OZ_PdaDeviceStatus.PinLength, щоб пад намалював рівно стільки крапок.
+    // Раніше чотири були правилом КЛІЄНТА: пад малював чотири, а сервер
+    // приймав будь-який рядок будь-якої довжини.
+    //
+    // Профіль, якого немає (клас не вписаний у Profiles.json), дає
+    // задокументовану четвірку -- те саме число, що стояло константою.
+    int OZ_PinLength()
+    {
+        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
+        if (prof && prof.PinLength > 0)
+            return prof.PinLength;
+        return OZ_PdaConst.PIN_LENGTH_DEFAULT;
+    }
 
     bool OZ_SetPin(string uid, string oldPin, string newPin)
     {
@@ -1180,7 +1196,7 @@ class OZ_PDA_Base : ItemBase
 
         if (!PinShaped(newPin))
         {
-            OZ_Log.Warn("pda: refused a PIN that is not " + PIN_DIGITS.ToString() + " digits from " + uid);
+            OZ_Log.Warn("pda: refused a PIN that is not " + OZ_PinLength().ToString() + " digits from " + uid);
             return false;
         }
 

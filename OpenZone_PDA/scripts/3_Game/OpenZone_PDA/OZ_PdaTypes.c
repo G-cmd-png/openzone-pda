@@ -115,6 +115,10 @@ class OZ_PdaDeviceStatus
     bool LockedOut = false;           // спроби вичерпані
     int  LockWaitS = 0;               // секунд до кінця блокування; 0 -- без вікна
     float LockAfterMinutes = 0;
+    // Скільки цифр у коді цієї моделі (ТЗ-5 R-B3.3). Пад малює рівно
+    // стільки крапок і стільки ж цифр приймає. Нуль -- відповідь від
+    // сервера, який про це поле ще не знає: клієнт бере умовчання.
+    int  PinLength = 0;
 
     // --- сесія ---
     bool   Online     = false;        // епохи збігаються
@@ -177,6 +181,7 @@ class OZ_PdaDeviceStatus
         c.LockedOut    = LockedOut;
         c.LockWaitS    = LockWaitS;
         c.LockAfterMinutes = LockAfterMinutes;
+        c.PinLength    = PinLength;
         c.Online      = Online;
         c.SessionMine = SessionMine;
         c.SnapshotAt  = SnapshotAt;

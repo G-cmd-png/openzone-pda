@@ -969,6 +969,9 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         st.HasPin   = false;
         st.Unlocked = true;
         st.Sealed   = false;
+        // Вимишлений прилад коду не має і мати не може, але поле возимо:
+        // клієнт один, і другого умовчання в нього бути не мусить.
+        st.PinLength = OZ_PdaConst.PIN_LENGTH_DEFAULT;
 
         OZ_PlayerData pd = OZ_PlayerStore.Load(uid);
         st.Owned       = true;
@@ -1039,6 +1042,7 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         st.DisplayName = prof.DisplayName;
         st.ModuleSlots = prof.ModuleSlots;
         st.LockAfterMinutes = prof.LockAfterMinutes;
+        st.PinLength   = pda.OZ_PinLength();
 
         // Адреса пристрою для клієнта. GetNetworkID віддає id двома int'ами,
         // і клієнт піднімає по них ту саму сутність через GetObjectByNetworkId.
@@ -1353,6 +1357,11 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         st.HasDecryptor = pda.OZ_HasDecryptor();
         st.Cracking     = pda.OZ_IsCracking();
         st.CrackLeftSec = pda.OZ_CrackLeftSec();
+        // П'ЯТА річ, і вона теж нічого не видає: скільки цифр у коді
+        // (ТЗ-5 R-B3.3). Без неї пад на ЗАМКНЕНОМУ приладі -- а це і є
+        // єдиний екран, де код набирають, -- малював би чотири крапки
+        // моделі, яка просить шість.
+        st.PinLength    = pda.OZ_PinLength();
 
         string outJson;
         string err;
