@@ -166,7 +166,17 @@ class OZ_ChatColors
 
 class OZ_PairFreeze
 {
-    static void Send(string route, string a, string b)
+    // reply = null -- «відповідь нікому не потрібна»: так ідуть відмикання
+    // (pair_thaw) після повторного рукостискання -- якщо міст спить,
+    // розмова лишиться в попередньому стані до наступної нагоди.
+    //
+    // ЗАМОРОЖЕННЯ ЙДЕ ІНАКШЕ (ТЗ-5 R-F3.1): контакт не викреслюється, доки
+    // міст не підтвердив, тож той, хто його шле, дає сюди свій
+    // OZ_BridgeReply і робить решту вже в ньому.
+    //
+    // true -- лист пішов; false -- його не вдалося навіть скласти, і
+    // викликач мусить відповісти гравцеві сам.
+    static bool Send(string route, string a, string b, OZ_BridgeReply reply = null)
     {
         OZ_ChatAskPair pr = new OZ_ChatAskPair();
         pr.A = a;
@@ -175,11 +185,10 @@ class OZ_PairFreeze
         string letter;
         string err;
         if (!JsonFileLoader<OZ_ChatAskPair>.MakeData(pr, letter, err, false))
-            return;
+            return false;
 
-        // Відповідь нікому не потрібна: якщо міст спить, розмова просто
-        // лишиться в попередньому стані до наступної нагоди.
-        OZ_BridgeClient.Call(route, letter, null);
+        OZ_BridgeClient.Call(route, letter, reply);
+        return true;
     }
 }
 

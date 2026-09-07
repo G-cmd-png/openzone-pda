@@ -15,6 +15,94 @@
 // Steam64»: нізвідки. По проводу їде лише ім'я, а сервер сам знаходить, кому
 // воно належить, серед тих, хто справді поруч.
 
+// ВІДПОВІДЬ МОСТА НА ЗАМОРОЖЕННЯ ПАРИ (ТЗ-5 R-F3.1, R-F3.2).
+//
+// Обробник, якого тут не було: лист ішов із reply = null, і про його долю
+// не дізнавався ніхто. Тепер саме він викреслює контакт -- ПІСЛЯ
+// підтвердження, -- і саме він каже гравцеві причину, коли міст відмовив
+// або не озвався (R-F3.2: відмова показується з причиною).
+//
+// Ключ співрозмовника, а не uid: між надсиланням і відповіддю могло
+// статися все, зокрема й пермадес, а ключ несе покоління в собі.
+class OZ_ContactDropReply : OZ_BridgeReply
+{
+    protected string m_Uid;
+    protected string m_TheirKey;
+
+    void OZ_ContactDropReply(string uid, string theirKey)
+    {
+        m_Uid      = uid;
+        m_TheirKey = theirKey;
+    }
+
+    override void OnBody(string json)
+    {
+        PlayerIdentity to = OZ_ChatWho.Online(m_Uid);
+
+        OZ_ChatFail fail = new OZ_ChatFail();
+        string err;
+        if (JsonFileLoader<OZ_ChatFail>.LoadData(json, fail, err) && fail && fail.Error != "")
+        {
+            // Міст відповів відмовою -- контакт лишається на місці.
+            if (to)
+                OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_CONTACTS, "friend_drop", false, "", OZ_ChatFail.KeyOf(fail.Error));
+            return;
+        }
+
+        Drop();
+
+        // Гравець міг вийти, поки лист подорожував. Записник уже правильний,
+        // і сказати про це просто нема кому.
+        if (to)
+            OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_CONTACTS, "friend_drop", true, "", "");
+    }
+
+    override void OnFail(int code)
+    {
+        PlayerIdentity to = OZ_ChatWho.Online(m_Uid);
+        if (!to)
+            return;
+
+        OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_CONTACTS, "friend_drop", false, "", "STR_OZ_ERR_NO_BRIDGE");
+    }
+
+    // Саме викреслення -- обидва боки, як і раніше.
+    private void Drop()
+    {
+        OZ_PlayerData me = OZ_PlayerStore.Load(m_Uid);
+        if (!me)
+            return;
+
+        int at = me.Friends.Find(m_TheirKey);
+        if (at != -1)
+            me.Friends.Remove(at);
+        OZ_PlayerStore.MarkDirty(m_Uid);
+
+        // ВЗАЄМНІСТЬ -- ЛИШЕ З ЖИВИМ. Дружбу розривають з обох боків, і поки
+        // людина та сама, це правильно: лишити запис у нього означало б, що
+        // він і далі бачить того, хто його викреслив.
+        //
+        // Але заморожений персонаж -- це вже не той, хто носить сьогодні цей
+        // Steam64. Викреслити «у нього» означало б залізти в записник ЖИВОЇ
+        // людини й прибрати звідти когось, кого вона й не чіпала.
+        if (!OZ_PlayerStore.IsLive(m_TheirKey))
+            return;
+
+        string theirUid = OZ_PlayerStore.UidOfKey(m_TheirKey);
+        string myKey    = OZ_PlayerStore.KeyOf(m_Uid);
+
+        OZ_PlayerData them = OZ_PlayerStore.Load(theirUid);
+        if (!them)
+            return;
+
+        int at2 = them.Friends.Find(myKey);
+        if (at2 != -1)
+            them.Friends.Remove(at2);
+
+        OZ_PlayerStore.MarkDirty(theirUid);
+    }
+}
+
 class OZ_PdaHandlerContacts : OZ_PageHandler
 {
     // Акаунт називає ПРИСТРІЙ -- див. OZ_PdaHandlerChat. Заморозки тут не
@@ -509,42 +597,28 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             return "";
         }
 
-        int at = me.Friends.Find(theirKey);
-        if (at != -1)
-            me.Friends.Remove(at);
-        OZ_PlayerStore.MarkDirty(myUid);
-
-        // ВЗАЄМНІСТЬ -- ЛИШЕ З ЖИВИМ. Дружбу розривають з обох боків, і поки
-        // людина та сама, це правильно: лишити запис у нього означало б, що
-        // він і далі бачить того, хто його викреслив.
+        // МІСТ ПІДТВЕРДЖУЄ ПЕРШИМ (ТЗ-5 R-F3.1).
         //
-        // Але заморожений персонаж -- це вже не той, хто носить сьогодні цей
-        // Steam64. Викреслити «у нього» означало б залізти в записник ЖИВОЇ
-        // людини й прибрати звідти когось, кого вона й не чіпала.
-        if (!OZ_PlayerStore.IsLive(theirKey))
+        // Розірваний контакт заморожує особисту розмову: читати можна,
+        // писати -- ні, доки руки не потиснуть знову (рішення власника
+        // 2026-08-29). Доти викреслення тут і відбувалось: спершу з
+        // записника, а лист із проханням заморозити летів услід -- без
+        // обробника відповіді (null) і без жодної перевірки, що доїхав.
+        // Тобто при сплячому мості гравець бачив «прибрано», а розмова
+        // лишалась відкритою: той, кого він відрізав, і далі йому писав.
+        //
+        // Ціна названа в ТЗ і приймається: при лежачому мості відрізати
+        // контакт НЕ МОЖНА. Це чесніше за «я його відрізав, а він мені
+        // пише». Ретраю немає (R-F3.3, ТЗ-2 R4.2) -- гравець тисне ще раз.
+        string theirUid = OZ_PlayerStore.UidOfKey(theirKey);
+        OZ_ContactDropReply reply = new OZ_ContactDropReply(myUid, theirKey);
+        if (!OZ_PairFreeze.Send("v1/chat/pair_freeze", myUid, theirUid, reply))
         {
-            ok = true;
-            error = "";
+            error = "STR_OZ_ERR_PDA_INTERNAL";
             return "";
         }
 
-        string theirUid = OZ_PlayerStore.UidOfKey(theirKey);
-        string myKey    = OZ_PlayerStore.KeyOf(myUid);
-
-        OZ_PlayerData them = OZ_PlayerStore.Load(theirUid);
-        int at2 = them.Friends.Find(myKey);
-        if (at2 != -1)
-            them.Friends.Remove(at2);
-
-        OZ_PlayerStore.MarkDirty(theirUid);
-
-        // Розірваний контакт заморожує особисту розмову: читати можна,
-        // писати -- ні, доки руки не потиснуть знову (рішення власника
-        // 2026-08-29).
-        OZ_PairFreeze.Send("v1/chat/pair_freeze", myUid, theirUid);
-
-        ok = true;
-        error = "";
+        error = OZ_Const.DEFER;
         return "";
     }
 
