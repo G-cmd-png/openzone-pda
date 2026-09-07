@@ -1,14 +1,11 @@
 {
   "layout": "oz_pda_page_device",
-  "note": "Сторінка «Пристрій»: два стовпчики секцій -- ліворуч факти (СИСТЕМА, ОБЛАДНАННЯ), праворуч дії (БЕЗПЕКА, ЖИВЛЕННЯ і небезпечна зона). Заряд -- смуга ChargeBar, її наповнення ChargeBarFill розтягує скрипт. Прев'ю пристрою лишається прихованим рішенням власника 2026-08-29: картинка з'їдала третину сторінки. CarPane -- оверлей із вмістом носія поверх стовпчиків. Імена читає OZ_PdaPageDevice.c.",
+  "note": "Сторінка «Пристрій»: два стовпчики секцій -- ліворуч факти (СИСТЕМА, ОБЛАДНАННЯ), праворуч дії (БЕЗПЕКА, ЖИВЛЕННЯ і небезпечна зона). Заряд -- смуга ChargeBar, її наповнення ChargeBarFill розтягує скрипт. Прев'ю пристрою лишається прихованим рішенням власника 2026-08-29: картинка з'їдала третину сторінки; підписи ПРИСТРОЮ при цьому лишились видимими -- вони в ОБЛАДНАННІ (TitleRow). CarPane -- оверлей із вмістом носія поверх стовпчиків. Імена читає OZ_PdaPageDevice.c.",
   "root": {"frame": {"name": "OZ_PageDevice", "size": "$device.page", "inset": "$space.page", "children": [
     {"panel": {"name": "PreviewPane", "at": [0, 0], "size": [400, 478], "color": "$panel", "hidden": true, "priority": 1,
-      "note": "Приховане, але живе: скрипт ще кладе в нього предмет і три підписи.",
+      "note": "Приховане рішенням власника 2026-08-29 -- і в ньому лишилась САМА КАРТИНКА. Три підписи, що лежали тут поруч, переїхали в ОБЛАДНАННЯ (TitleRow нижче): ховали третину сторінки, яку з'їдало прев'ю, а забрали з очей ще й єдине місце, де екран називав СВІЙ пристрій. Скрипт кладе сюди предмет і далі.",
       "children": [
-      {"preview": {"name": "Preview", "size": [400, 375], "priority": 2}},
-      {"label": {"name": "TitleName", "at": [18, 380], "size": [365, 32], "font": "title", "color": "$accent"}},
-      {"label": {"name": "TitleProfile", "at": [18, 412], "size": [365, 28], "font": "hint", "color": "$muted"}},
-      {"label": {"name": "TitlePlace", "at": [18, 440], "size": [365, 28], "font": "small", "color": "$muted"}}
+      {"preview": {"name": "Preview", "size": [400, 375], "priority": 2}}
     ]}},
     {"panel": {"name": "CarPane", "anchor": "bottom", "at": [0, 0], "w": "fill", "h": 240, "color": "$rail",
       "inset": "$space.overlay", "hidden": true, "priority": 5, "click": true,
@@ -44,6 +41,13 @@
       {"label": {"name": "LinkText", "h": 22, "font": "small", "color": "$muted"}},
       {"text":  {"name": "SnapshotText", "h": 70, "plain": true, "grow": false, "font": "hint", "color": "$muted"}},
       {"section": {"name": "SecHw", "text": "#STR_OZ_DEV_SEC_HARDWARE"}},
+      {"hbox": {"name": "TitleRow", "h": 26, "gap": "$space.gap",
+                "note": "ЯКИЙ САМЕ ЦЕ ПРИСТРІЙ -- перший рядок обладнання. Правило вибору одне на весь мод (реєстр §2.2 B4: надітий головніший за той, що в руках), тож екран, відкритий дією над приладом У РУЦІ, законно говорить із НАДІТИМ. Поки цих підписів не було видно, розрізнити два прилади з екрана було нічим: сторінка малювала стелі й відсіки надітого, а читалась як опис того, що в руці. Праворуч -- де прилад: порожньо, коли він у руках.",
+                "children": [
+        {"label": {"name": "TitleName", "w": "fill", "font": "title", "color": "$accent"}},
+        {"label": {"name": "TitlePlace", "w": 220, "font": "small", "color": "$muted", "align": "right"}}
+      ]}},
+      {"label": {"name": "TitleProfile", "h": 20, "font": "hint", "color": "$muted"}},
       {"label": {"name": "BaysLabel", "h": 22, "text": "#STR_OZ_DEV_BAYS", "font": "small", "color": "$muted"}},
       {"label": {"name": "BayText0", "h": 24, "font": "body", "color": "$text"}},
       {"label": {"name": "BayText1", "h": 24, "font": "body", "color": "$text"}},
