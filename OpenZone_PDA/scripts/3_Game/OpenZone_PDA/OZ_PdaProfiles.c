@@ -38,22 +38,23 @@ class OZ_PdaLimits
     // Ключ, якого У ФАЙЛІ НЕМАЄ, копія переносить нулем, а не числом з
     // ініціалізатора нижче: після копії «немає у файлі» й «нуль у файлі»
     // невідрізненні. Тому ініціалізатори цих трьох полів -- ДОКУМЕНТАЦІЯ, а
-    // не робочий механізм, і кожне поле мусить сказати, хто ставить йому
-    // умовчання насправді:
+    // умовчання ставить Validate, і робить це для ВСІХ ТРЬОХ однаково
+    // (ТЗ-4 R-F1.6): нуль -- це «ключа немає», про нього є рядок у лозі з
+    // іменем профілю, і задокументоване число пишеться назад у файл.
     //
-    //   Memory     -- Validate, ВГОЛОС (WARNING на ім'я профілю, R-F1.3);
-    //   Friends    -- Validate, МОВЧКИ, з OZ_PdaConst.FRIENDS_DEFAULT. Нуль
-    //                 тут не можна лишити як прочитався: Full() читає
-    //                 Friends <= 0 як «стелі немає», тобто забутий ключ не
-    //                 звужував би межу записника, а скасовував її;
-    //   GroupChats -- ПОКИ ЩО НІХТО, і це не «все гаразд», а відкритий
-    //                 пункт. Нуль їде до моста полем OZ_ChatAskGroup.Max, а
-    //                 там він означає «без межі» -- тобто пастка та сама, що
-    //                 у Friends. Не чіпаємо в цій хвилі лише тому, що нуль
-    //                 тут ще й ЗАКОННЕ значення на дроті: OZ_PdaChat ставить
-    //                 Max = 0 засновникові, у якого профілю немає взагалі.
-    //                 Розв'язати це має лоадер, який відрізняє «немає ключа»
-    //                 від нуля (та сама вимога, що в task-57b, пункт 2).
+    // Чому саме так, а не «нуль = без межі»: нуль на дроті означає «без
+    // межі» і в записнику (OZ_PdaContactSwap.Full), і в мосту
+    // (OZ_ChatAskGroup.Max), тож забутий ключ не звужував межу, а
+    // СКАСОВУВАВ її -- мовчки. Той самий хід, яким ядро закрило
+    // Health01/QuickBar (ТЗ-3 R4.2).
+    //
+    // ЩО ЛИШАЄТЬСЯ ЗА НУЛЕМ: випадок, де його ставить не профіль, а сам
+    // випадок. Засновник, у якого профілю немає взагалі, досі їде до моста
+    // з Max = 0, і міст читає це як «без межі», -- саме той шлях, заради
+    // якого нуль на дроті й потрібен.
+    //
+    // Кому потрібен записник без стелі в САМОМУ профілі -- пише велике
+    // число, і воно видно у файлі, а не вгадується з відсутності рядка.
     OZ_PdaLimits Copy()
     {
         OZ_PdaLimits c = new OZ_PdaLimits();
@@ -73,12 +74,31 @@ class OZ_PdaProfile
     ref array<string> BatteryClassNames;
     ref OZ_PdaLimits  Limits;
 
-    // RequiresPower, PowerDrainPerMin, Theme і PinProtectedPages ЗНЯТІ
-    // (ревізія 2026-09-06). Усі чотири оголошувались, валідувались і не
-    // читались ніде: живлення вирішує рушійний ComponentEnergyManager,
-    // тема одна на серію (ui/tokens.json ядра), а «сторінки, що просять код
-    // ще раз» ворота OZ_PdaAccess не питали ніколи. Поле, яке обіцяє
-    // адмінові важіль і нічого не робить, гірше за відсутнє.
+    // RequiresPower, Theme і PinProtectedPages ЗНЯТІ (ревізія 2026-09-06):
+    // оголошувались, валідувались і не читались ніде -- тема одна на серію
+    // (ui/tokens.json ядра), а «сторінки, що просять код ще раз» ворота
+    // OZ_PdaAccess не питали ніколи. Поле, яке обіцяє адмінові важіль і
+    // нічого не робить, гірше за відсутнє.
+
+    // БАЗОВА ВИТРАТА ЖИВЛЕННЯ, одиниць енергії за хвилину (ТЗ-5 R-B2.2).
+    //
+    // Знята тією ж ревізією разом із трьома вище -- і повернена, бо це
+    // ЄДИНЕ з чотирьох, що ТЗ прямо замовляло оживити, а не прибрати.
+    // Витрата приладу = це число x добуток PowerFactor вставлених плат
+    // (OZ_PDA_Base.OZ_ApplyDrain). Тир нарешті означає щось і тут:
+    // трислотовий прилад із трьома платами сідає помітно швидше за
+    // однослотовий із порожнім гніздом.
+    //
+    // Нуль -- «ключа немає»: Validate поставить умовчання й скаже про це
+    // вголос. Прилад, що не їсть нічого, задається дуже малим числом, а не
+    // нулем: вимкнути витрату повністю означало б вічну батарею, а такого
+    // ТЗ не замовляло.
+    float PowerDrainPerMin = 0;
+
+    // ДОВЖИНА ПІН-КОДУ (ТЗ-5 R-B3.3). Умовчання 4; сервер перевіряє довжину
+    // й склад саме за цим числом, а пад малює за ним свої крапки. Раніше
+    // чотири були правилом КЛІЄНТА, а сервер приймав будь-який рядок.
+    int PinLength = 0;
 
     // Скільки модульних відсіків видно на цій моделі. ГОЛОВНИЙ важіль тиру:
     // один відсік змушує вибирати між далеким зв'язком і лічильником Гейгера,
@@ -119,6 +139,8 @@ class OZ_PdaProfile
         c.Id               = Id;
         c.DisplayName      = DisplayName;
         c.ModuleSlots      = ModuleSlots;
+        c.PowerDrainPerMin = PowerDrainPerMin;
+        c.PinLength        = PinLength;
         c.LockAfterMinutes = LockAfterMinutes;
         c.ForceAutoLock    = ForceAutoLock;
         c.Sealed           = Sealed;
@@ -233,6 +255,10 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         // Поставочні числа (ТЗ-4 R-F1.4) -- стартова точка балансу, не договір:
         // novice 25, advanced 60, sealed 10. Правляться в Profiles.json.
         p.Limits.Memory     = 25;
+        p.Limits.Friends    = OZ_PdaConst.FRIENDS_DEFAULT;
+        p.Limits.GroupChats = OZ_PdaConst.GROUPCHATS_DEFAULT;
+        p.PowerDrainPerMin  = OZ_PdaConst.DRAIN_DEFAULT;
+        p.PinLength         = OZ_PdaConst.PIN_LENGTH_DEFAULT;
         Profiles.Insert(p);
 
         OZ_PdaProfile a = new OZ_PdaProfile();
@@ -260,6 +286,10 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         a.Limits.GroupChats = 8;
         a.ModuleSlots       = OZ_PdaConst.MODULE_SLOTS_MAX;
         a.LockAfterMinutes  = 5;
+        // Просунутий прилад їсть більше й тримає довший код: три відсіки
+        // під плати -- це і три множники PowerFactor на витраті.
+        a.PowerDrainPerMin  = 0.8;
+        a.PinLength         = OZ_PdaConst.PIN_LENGTH_DEFAULT;
         Profiles.Insert(a);
 
         // Запечатаний КПК: приклад, який одразу працює, і водночас зразок
@@ -287,6 +317,10 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         q.LockAfterMinutes  = 1;
         q.Sealed            = true;
         q.CrackSeconds      = 90;
+        q.Limits.Friends    = OZ_PdaConst.FRIENDS_DEFAULT;
+        q.Limits.GroupChats = OZ_PdaConst.GROUPCHATS_DEFAULT;
+        q.PowerDrainPerMin  = OZ_PdaConst.DRAIN_DEFAULT;
+        q.PinLength         = OZ_PdaConst.PIN_LENGTH_DEFAULT;
 
         q.PresetMarkers = new array<ref OZ_MapMarker>();
         VirtualDevice = new OZ_PdaVirtualDevice();
@@ -301,6 +335,28 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         return true;
     }
 
+    // Один рядок про забутий ключ, і всі троє кажуть його однаково.
+    private string LimitMissing(string id, string key, int fallback)
+    {
+        string m = "profile \"" + id + "\" declares no ";
+        m += key + " - writing the documented ";
+        m += fallback.ToString();
+        return m;
+    }
+
+    // WARNINGS -- ЦЕ «Я ЩОСЬ ПОЛАГОДИВ», А НЕ «Я ЩОСЬ ПОМІТИВ».
+    //
+    // Лоадер ядра пише файл назад саме за цим числом
+    // (OZ_ConfigLoader.Load: warnings > 0 && rewriteOnFix -> Save), і сенс
+    // того запису один -- закріпити на диску те, що Validate виправив у
+    // пам'яті. Скарги ж, які нічого не міняють, -- сторінка чужого мода, що
+    // не зареєстрована, класнейм, якого немає в CfgVehicles, -- повторюються
+    // КОЖЕН бут і кожен бут переписували файл байт у байт, разом із
+    // бекапом. Стенд КПК крутив це на трьох файлах щоразу (task-57d, §2).
+    //
+    // Тепер warnings++ стоїть ЛИШЕ там, де об'єкт у пам'яті став іншим.
+    // Наслідок: перезапис відбувається один раз -- той, що дописує в файл
+    // забутий ключ, -- і на наступному буті скарги вже немає, бо ключ є.
     override void Validate(out int warnings)
     {
         warnings = 0;
@@ -344,11 +400,10 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         {
             OZ_PdaProfile p = Profiles[i];
 
+            // СКАРГА, ЯКА НІЧОГО НЕ ПОЛАГОДИЛА, НЕ РАХУЄТЬСЯ (див. шапку
+            // Validate): порожній ClassNames лікує адмін, а не ми.
             if (!p.ClassNames || p.ClassNames.Count() == 0)
-            {
                 OZ_Log.Warn("profile \"" + p.Id + "\" has no ClassNames - nothing will ever match it");
-                warnings++;
-            }
 
             for (int c = 0; p.ClassNames && c < p.ClassNames.Count(); c++)
             {
@@ -360,7 +415,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
                     wc += "\": class \"" + p.ClassNames[c];
                     wc += "\" is not in CfgVehicles";
                     OZ_Log.Warn(wc);
-                    warnings++;
                 }
             }
 
@@ -375,39 +429,75 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
                     wp += "\": page \"" + p.Pages[g];
                     wp += "\" is not registered";
                     OZ_Log.Warn(wp);
-                    warnings++;
                 }
             }
 
             if (!p.Limits)
                 p.Limits = new OZ_PdaLimits();
 
-            // Limits.Memory -- ЄДИНЕ джерело числа ячейок (ТЗ-4 R-F1.2). Немає
-            // -- WARNING з іменем профілю й задокументоване умовчання, а не
-            // мовчазний перехід на константу з іншого файлу (R-F1.3).
+            // ТРИ КЛЮЧІ LIMITS -- ОБОВ'ЯЗКОВІ, і це те, що дає нулю зміст.
+            //
+            // Після Copy() ключ, якого у файлі немає, читається нулем, а нуль
+            // на дроті означає «без межі» -- і в записнику
+            // (OZ_PdaContactSwap.Full), і в мосту (OZ_ChatAskGroup.Max). Тобто
+            // забутий ключ не звужував межу, а СКАСОВУВАВ її, причому мовчки.
+            //
+            // Розв'язок той самий, що ядро застосувало до Health01/QuickBar
+            // (ТЗ-3 R4.2): нуль у профілі трактується як відсутній ключ,
+            // називається вголос і замінюється задокументованим умовчанням.
+            // warnings++ тут ПОТРІБЕН: він і є той запис назад, після якого
+            // ключ у файлі з'являється -- рівно ОДИН перезапис, а не кожен
+            // бут. Далі файл несе всі три ключі, скарги нема, і «нуль без
+            // межі» лишається чинним там, де його ставить не профіль, а сам
+            // випадок: засновник без профілю досі їде до моста з Max = 0.
             if (p.Limits.Memory <= 0)
             {
-                string wmem = "profile \"" + p.Id + "\" declares no Limits.Memory - using ";
-                wmem += OZ_PdaConst.MEMORY_DEFAULT.ToString() + " cells; set it in Profiles.json";
-                OZ_Log.Warn(wmem);
+                OZ_Log.Warn(LimitMissing(p.Id, "Memory", OZ_PdaConst.MEMORY_DEFAULT) + " cells");
                 p.Limits.Memory = OZ_PdaConst.MEMORY_DEFAULT;
                 warnings++;
             }
 
-            // Friends -- НЕ той випадок, де нуль можна лишити як прочитався.
-            // Після Copy() ключ, якого у файлі немає, і чесний нуль у файлі
-            // невідрізненні, а читає їх OZ_PdaContactSwap.Full() як «стелі
-            // немає». З двох прочитань забутого ключа безпечне саме
-            // задокументоване число: забутий ключ, що МОВЧКИ ЗНІМАЄ межу,
-            // гірший за адміна, який втратив нуль як спосіб її зняти. Кому
-            // потрібен записник без стелі -- пише велике число, і воно видно
-            // у файлі, а не вгадується з відсутності рядка.
-            //
-            // Мовчки й без warnings++: інакше кожен профіль без цього ключа
-            // переписував би файл на завантаженні (OZ_ConfigBase.Validate ->
-            // write). Той самий хід, що в OZF_Settings.InviteTtlSeconds.
             if (p.Limits.Friends <= 0)
+            {
+                OZ_Log.Warn(LimitMissing(p.Id, "Friends", OZ_PdaConst.FRIENDS_DEFAULT) + " contacts");
                 p.Limits.Friends = OZ_PdaConst.FRIENDS_DEFAULT;
+                warnings++;
+            }
+
+            if (p.Limits.GroupChats <= 0)
+            {
+                OZ_Log.Warn(LimitMissing(p.Id, "GroupChats", OZ_PdaConst.GROUPCHATS_DEFAULT) + " conversations");
+                p.Limits.GroupChats = OZ_PdaConst.GROUPCHATS_DEFAULT;
+                warnings++;
+            }
+
+            // Витрата живлення (ТЗ-5 R-B2.2) і довжина коду (R-B3.3) --
+            // рівно та сама розмова про нуль, що й у Limits вище.
+            if (p.PowerDrainPerMin <= 0)
+            {
+                string wdr = "profile \"" + p.Id + "\" declares no PowerDrainPerMin - using ";
+                wdr += OZ_PdaConst.DRAIN_DEFAULT.ToString() + " per minute; set it in Profiles.json";
+                OZ_Log.Warn(wdr);
+                p.PowerDrainPerMin = OZ_PdaConst.DRAIN_DEFAULT;
+                warnings++;
+            }
+
+            if (p.PinLength <= 0)
+            {
+                OZ_Log.Warn(LimitMissing(p.Id, "PinLength", OZ_PdaConst.PIN_LENGTH_DEFAULT) + " digits");
+                p.PinLength = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+                warnings++;
+            }
+            else if (p.PinLength < OZ_PdaConst.PIN_LENGTH_MIN || p.PinLength > OZ_PdaConst.PIN_LENGTH_MAX)
+            {
+                string wpl = "profile \"" + p.Id + "\" asks for a PIN of ";
+                wpl += p.PinLength.ToString() + " digits; the pad draws ";
+                wpl += OZ_PdaConst.PIN_LENGTH_MIN.ToString() + ".." + OZ_PdaConst.PIN_LENGTH_MAX.ToString();
+                OZ_Log.Warn(wpl);
+                p.PinLength = Math.Clamp(p.PinLength, OZ_PdaConst.PIN_LENGTH_MIN, OZ_PdaConst.PIN_LENGTH_MAX);
+                warnings++;
+            }
+
             if (!p.BatteryClassNames)
                 p.BatteryClassNames = new array<string>();
             if (!p.PresetMarkers)
