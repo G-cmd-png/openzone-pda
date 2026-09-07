@@ -241,6 +241,26 @@ class OZ_NewsSink : OZ_BridgeSink
             OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, json, "");
         }
     }
+
+    // ЩО ЯДРО ЗНАЄ ПРО РІД "news" -- рівно те, що сказано тут (платформа
+    // §4). Ці імена жили в самому ядрі списком; задача 61 забрала їх
+    // звідти, і без цих трьох рядків читальний кеш моста стоїть порожній:
+    // неоголошена дорога рахується записувальною, тобто сторінка новин
+    // ходила б до моста на кожне відкриття.
+    override void Reads(array<string> routes)
+    {
+        routes.Insert("v1/news/list");
+        routes.Insert("v1/news/open");
+    }
+
+    // Список персон -- питання про ПРАВА, а не про стрічку: відповідь про
+    // мить, кешувати нема чого, але й гасити кешовану стрічку вона не
+    // мусить. Сторінка просить список і голоси разом, і без цього список у
+    // кеші не жив би довше одного запиту.
+    override void Neutral(array<string> routes)
+    {
+        routes.Insert("v1/news/voices");
+    }
 }
 
 class OZ_PdaHandlerNews : OZ_PageHandler

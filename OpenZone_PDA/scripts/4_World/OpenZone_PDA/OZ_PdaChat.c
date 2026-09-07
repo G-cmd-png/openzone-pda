@@ -453,6 +453,37 @@ class OZ_ChatSink : OZ_BridgeSink
         for (int t = 0; t < tos.Count(); t++)
             OZ_Rpc.Respond(tos[t], OZ_PdaConst.PAGE_CHAT, "line", true, ejson, "");
     }
+
+    // ЩО ЯДРО ЗНАЄ ПРО РІД "chat" -- рівно те, що сказано тут (платформа
+    // §4). Ці імена жили списком у самому ядрі; задача 61 забрала їх
+    // звідти, і без цих рядків читальний кеш моста стоїть порожній:
+    // неоголошена дорога рахується записувальною, отже кожне відкриття
+    // розмови йшло б до моста наново.
+    override void Reads(array<string> routes)
+    {
+        routes.Insert("v1/chat/list");
+        routes.Insert("v1/chat/open");
+        routes.Insert("v1/chat/older");
+    }
+
+    // КУРСОР ОПИТУ -- НАШ. Міст рахує його по потоку повідомлень, тобто по
+    // тому самому, з якого зроблені ці три дороги: зсув курсора застарює їх
+    // навіть тоді, коли рядок був не для нас і в пачку не потрапив. Ядро
+    // цього вгадати не може -- воно возить курсор, а не читає його зміст.
+    override bool FollowsCursor()
+    {
+        return true;
+    }
+
+    // Загальне речення ядра тут майже правильне, але не називає головного:
+    // вимкнене дзеркало не робить розмову недоступною -- вона лишається в
+    // приладі, просто перестає їздити в Discord.
+    override string MirrorNote(string kind, bool on)
+    {
+        if (on)
+            return "the bot creates a thread per conversation and mirrors every line into Discord from the next poll";
+        return "the bot stops mirroring conversations into Discord; the PDA keeps them and the threads stay as an archive";
+    }
 }
 
 // -------------------------------------------------------------- сторінка
