@@ -143,6 +143,13 @@ class OZ_PdaHud
     private static MapWidget s_MiniMap;
     private static float s_Acc = 0;
     private static bool s_Hooked = false;
+
+    // Останній прилад, який дав оверлеї, або "none". Лише щоб не повторювати
+    // той самий рядок у лозі двічі на секунду.
+    private static string s_SawPicked = "";
+
+    // Остання причина мовчання худу, або "" коли він малюється.
+    private static string s_SawHidden = "the mission has not ticked yet";
     private static ref OZ_PdaHudEars s_Ears;
     private static ref array<ref OZ_HudPane> s_Panes = new array<ref OZ_HudPane>();
 
@@ -184,7 +191,23 @@ class OZ_PdaHud
         s_Acc = 0;
 
         // Гасне разом із ванільним інтерфейсом, а не світиться поверх нього.
-        if (!Visible())
+        //
+        // ПРИЧИНА МОВЧАННЯ НАЗИВАЄТЬСЯ ВГОЛОС, і лише коли вона змінилась.
+        // «Оверлеїв немає, бо прилад не надітий» і «оверлеїв немає, бо худ
+        // узагалі не малюється» -- одна й та сама порожнеча на екрані, і
+        // без цього рядка їх не розрізнити: перше -- виконана вимога
+        // (ТЗ-5 R-B1.1), друге -- поламаний худ.
+        string hidden = HiddenWhy();
+        if (hidden != s_SawHidden)
+        {
+            s_SawHidden = hidden;
+            if (hidden != "")
+                OZ_Log.Dbg("hud: silent -- " + hidden);
+            else
+                OZ_Log.Dbg("hud: drawing again; " + Carried());
+        }
+
+        if (hidden != "")
         {
             if (s_Root)
                 s_Root.Show(false);
@@ -196,6 +219,19 @@ class OZ_PdaHud
         // Не Device(): той відкочується на руки, і саме цей відкат ТЗ-5
         // знімає. Трофей у руках екран відкриває, а худ -- ні.
         OZ_PDA_Base pda = Worn();
+
+        // ПРАВИЛО ВИДНО В ЛОЗІ, і лише коли відповідь змінилась: інакше цей
+        // рядок ішов би двічі на секунду. Без нього «оверлеїв немає» і
+        // «оверлеї не малюються» -- одна й та сама тиша, а це різні біди:
+        // перше -- виконана вимога, друге -- поламаний худ.
+        string picked = "none";
+        if (pda)
+            picked = pda.GetType();
+        if (picked != s_SawPicked)
+        {
+            s_SawPicked = picked;
+            OZ_Log.Dbg("hud: overlays follow the worn device; " + Carried());
+        }
 
         if (!pda)
         {
@@ -516,6 +552,27 @@ class OZ_PdaHud
         return OZ_PdaLookup.HeldByPlayer(PlayerBase.Cast(GetGame().GetPlayer()));
     }
 
+    // Хто де: надітий прилад і прилад у руках, одним рядком для лога.
+    // Рівно ця пара й є вимога R-B1.1 -- перший дає оверлеї, другий ні.
+    private static string Carried()
+    {
+        PlayerBase p = PlayerBase.Cast(GetGame().GetPlayer());
+        if (!p)
+            return "no player";
+
+        string worn = "none";
+        OZ_PDA_Base w = OZ_PdaLookup.WornBy(p);
+        if (w)
+            worn = w.GetType();
+
+        string hands = "none";
+        OZ_PDA_Base h = OZ_PDA_Base.Cast(p.GetItemInHands());
+        if (h)
+            hands = h.GetType();
+
+        return "worn=" + worn + " hands=" + hands + " wearSlot=" + OZ_PdaSlots.Wear().ToString();
+    }
+
     // Прилад, з якого мальовані оверлеї: ТІЛЬКИ НАДІТИЙ (ТЗ-5 R-B1.1,
     // R-B1.2). Друга половина того самого правила -- у
     // OZ_PdaLookup.WornBy, і копії тут теж немає.
@@ -645,23 +702,29 @@ class OZ_PdaHud
     // Чи має HUD бути видимим ЗАРАЗ. Одна функція на всі причини гасіння
     // -- інакше кожне нове місце гасило б по-своєму, і одне з них рано чи
     // пізно розійшлося б з рештою.
-    private static bool Visible()
+    // Порожній рядок -- малюємо; будь-що інше -- причина мовчання, готова
+    // до лога. Раніше це був bool, і на стенді з VPP худ мовчав без жодного
+    // сліду про те, котра з шести перевірок його зупинила.
+    private static string HiddenWhy()
     {
         PlayerBase p = PlayerBase.Cast(GetGame().GetPlayer());
-        if (!p || !p.IsAlive())
-            return false;
+        if (!p)
+            return "no player yet";
+        if (!p.IsAlive())
+            return "the player is dead";
 
         UIManager ui = GetGame().GetUIManager();
         if (!ui)
-            return false;
+            return "no UIManager";
 
         // Наш власний КПК відкритий -- екран каже все те саме, і краще.
         if (ui.FindMenu(OZ_PdaConst.MENU_PDA))
-            return false;
+            return "the PDA screen is open";
 
         // Будь-яке інше меню поверх світу: пауза, налаштування, чуже вікно.
-        if (ui.GetMenu())
-            return false;
+        UIScriptedMenu top = ui.GetMenu();
+        if (top)
+            return "a menu is open: " + top.Type().ToString();
 
         // Прапорці ванільного інтерфейсу. IngameHud.Cast -- саме так до них
         // ходить і сама ваниль (gesturesmenu.c:228, continuousactionprogress.c:60).
@@ -677,19 +740,19 @@ class OZ_PdaHud
                 // оператор наприкінці рядка чи на початку наступного.
                 // Перевірено на стенді 2026-08-26, обидва варіанти.
                 if (vis.IsContextFlagActive(EHudContextFlags.HUD_HIDE))
-                    return false;
+                    return "the vanilla HUD is hidden";
                 if (vis.IsContextFlagActive(EHudContextFlags.HUD_DISABLE))
-                    return false;
+                    return "the vanilla HUD is disabled";
                 if (vis.IsContextFlagActive(EHudContextFlags.INVENTORY_OPEN))
-                    return false;
+                    return "the inventory is open";
                 if (vis.IsContextFlagActive(EHudContextFlags.MENU_OPEN))
-                    return false;
+                    return "a vanilla menu is open";
                 if (vis.IsContextFlagActive(EHudContextFlags.UNCONSCIOUS))
-                    return false;
+                    return "the player is unconscious";
             }
         }
 
-        return true;
+        return "";
     }
 
     // Знімає корінь із робочої області.

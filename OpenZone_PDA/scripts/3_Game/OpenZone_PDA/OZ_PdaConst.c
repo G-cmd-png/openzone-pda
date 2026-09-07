@@ -181,19 +181,59 @@ class OZ_PdaSlots
     private static int  s_Wear    = -1;
     private static ref array<int> s_Module;
 
+    // НЕВДАЛИЙ ПОШУК НЕ КЕШУЄТЬСЯ, і це не педантизм.
+    //
+    // Кеш замикався ПЕРШИМ дотиком і запам'ятовував усе, що встиг знайти --
+    // разом із -1. На клієнті першим питає HUD, двічі на секунду з першого ж
+    // такту місії, тобто РАНІШЕ, ніж рушій зареєстрував таблицю слотів: у
+    // s_Wear лягала -1 і лежала там до кінця сеансу. Наслідок був невидимий,
+    // бо тодішній резолвер відкочувався на руки й малював худ із них
+    // (ТЗ-5 R-B1.2 саме цей відкат і знімає) -- прибрали відкат, і худ
+    // замовк назавжди. Зміряно на стенді 2026-09-07: із КПК у слоті носіння
+    // сервер його бачив, клієнт -- ні.
+    //
+    // Тепер замикаємось лише тоді, коли знайшлось УСЕ; доти кожен виклик
+    // перепитує рушій. Ціна -- кілька нативних викликів на перших секундах
+    // місії, поки таблиця не з'явиться.
     private static void Ensure()
     {
         if (s_Done)
             return;
-        s_Done = true;
 
-        s_Battery = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_BATTERY);
-        s_Carrier = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_CARRIER);
-        s_Wear    = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_WEAR);
+        if (s_Battery == -1)
+            s_Battery = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_BATTERY);
+        if (s_Carrier == -1)
+            s_Carrier = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_CARRIER);
+        if (s_Wear == -1)
+            s_Wear = InventorySlots.GetSlotIdFromString(OZ_PdaConst.SLOT_WEAR);
 
-        s_Module = new array<int>();
+        if (!s_Module)
+        {
+            s_Module = new array<int>();
+            for (int f = 0; f < OZ_PdaConst.MODULE_SLOTS_MAX; f++)
+                s_Module.Insert(-1);
+        }
+
+        bool all = true;
+        if (s_Battery == -1)
+            all = false;
+        if (s_Carrier == -1)
+            all = false;
+        if (s_Wear == -1)
+            all = false;
+
         for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
-            s_Module.Insert(InventorySlots.GetSlotIdFromString(OZ_PdaConst.ModuleSlot(i)));
+        {
+            if (s_Module[i] != -1)
+                continue;
+
+            s_Module.Set(i, InventorySlots.GetSlotIdFromString(OZ_PdaConst.ModuleSlot(i)));
+            if (s_Module[i] == -1)
+                all = false;
+        }
+
+        if (all)
+            s_Done = true;
     }
 
     static int Battery() { Ensure(); return s_Battery; }
