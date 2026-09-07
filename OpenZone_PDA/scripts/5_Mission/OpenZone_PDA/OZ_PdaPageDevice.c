@@ -910,8 +910,12 @@ class OZ_PdaPageDevice : OZ_PdaPage
             al += "#STR_OZ_ON";
             if (st.LockAfterMinutes > 0)
             {
+                // ОДИНИЦЯ -- КЛЮЧ ТАБЛИЦІ, а не літерал: " min)" стояв
+                // рядком у коді, і українська колонка читала
+                // «АВТОБЛОКУВАННЯ увімкнено (5 min)» (task-57d, §7.1).
                 int m = Math.Round(st.LockAfterMinutes);
-                al += " (" + m.ToString() + " min)";
+                al += " (" + m.ToString();
+                al += " " + Widget.TranslateString("#STR_OZ_MIN_SHORT") + ")";
             }
         }
         SetHint("AutoLockText", al);
