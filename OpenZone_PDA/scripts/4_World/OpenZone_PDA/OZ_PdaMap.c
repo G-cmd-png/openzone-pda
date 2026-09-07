@@ -929,8 +929,14 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // на секунду на весь онлайн.
         string myKey = OZ_PlayerStore.KeyOf(myUid);
 
+        // GetWorldPosition, А НЕ GetPosition (дизайн гарячого шляху §5, §7):
+        // object.c:292-297 розрізняє їх прямо -- світові координати з
+        // урахуванням перетворення проксі дає саме друга. Гравець у машині
+        // причеплений до неї в ієрархії, тож його GetPosition світовим бути
+        // не зобов'язаний. Обидві сторони порівняння мусять міряти однаково,
+        // а OZ_Spatial уже міряє сусідів саме так.
         array<Man> near = new array<Man>();
-        OZ_Spatial.PlayersInRadius(me.GetPosition(), range, near);
+        OZ_Spatial.PlayersInRadius(me.GetWorldPosition(), range, near);
 
         // ШПИГУНСЬКА плата ламає приватність: бачить усіх, у кого
         // транспондер узагалі не "off". Ціна -- лічені хвилини ресурсу,
@@ -997,7 +1003,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             b.Name = oid.GetName();
             if (ownerUid != otherUid && od && od.Name != "")
                 b.Name = od.Name;
-            b.Pos  = other.GetPosition().ToString(false);
+            b.Pos  = other.GetWorldPosition().ToString(false);
             outBeacons.Insert(b);
         }
     }
