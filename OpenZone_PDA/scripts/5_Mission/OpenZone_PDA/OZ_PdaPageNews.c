@@ -88,6 +88,9 @@ class OZ_PdaPageNews : OZ_PdaPage
         {
             if (m_Compose)
                 m_Compose.Show(true);
+            // Заголовок панелі -- ще й рядок відповіді (див. Refused): на
+            // відкритті він повертається до підказки.
+            SetText("CmpHead", "#STR_OZ_NEWS_COMPOSE");
             m_Pick = 0;
             PaintWho();
             return true;
@@ -160,6 +163,18 @@ class OZ_PdaPageNews : OZ_PdaPage
         return OnPageClick(w, x, y);
     }
 
+    // ВІДМОВУ НА ДОПИС ВИДНО ТАМ, ДЕ ЙОГО ПИСАЛИ.
+    //
+    // NewsHint лежить у нижньому рядку правої панелі, а панель написання
+    // накриває її цілком: причина відмови малювалась ПІД оверлеєм, і лідер
+    // бачив просто нічого. Тому те саме речення йде ще й у заголовок панелі,
+    // який видно завжди, поки вона відкрита; BtnWrite повертає туди підказку.
+    private void Refused(string said)
+    {
+        SetHintSticky("NewsHint", said);
+        SetText("CmpHead", said);
+    }
+
     // Одна сторінка стрічки. Курсор -- рядок моста; порожній означає
     // «найновіші» (ТЗ-5 R-D1.2).
     private void AskPage(string cursor)
@@ -203,21 +218,27 @@ class OZ_PdaPageNews : OZ_PdaPage
             // ВІДМОВА «НЕ ТВОЯ ПЕРСОНА» НЕСЕ ПЕРЕЛІК (ТЗ-6 R1.3, приймання
             // 5.3). Сказати лідерові, що ім'я не його, і не сказати, які
             // його, -- це відповідь, після якої йдуть питати адміна.
-            if (op == "post" && error == "STR_OZ_ERR_NEWS_NOT_YOUR_VOICE" && json != "")
+            if (op == "post")
             {
-                OZ_NewsFail nf = new OZ_NewsFail();
-                string ferr;
-                if (JsonFileLoader<OZ_NewsFail>.LoadData(json, nf, ferr) && nf && nf.Allowed && nf.Allowed.Count() > 0)
-                {
-                    // Склеюємо ПІСЛЯ розбору й один раз: кожна склейка --
-                    // виділення, а конверт розібрав серіалізатор.
-                    string names = nf.Allowed[0];
-                    for (int ai = 1; ai < nf.Allowed.Count(); ai++)
-                        names = names + ", " + nf.Allowed[ai];
+                string said = Widget.TranslateString("#" + error);
 
-                    SetHintSticky("NewsHint", Widget.TranslateString("#" + error) + "  " + names);
-                    return;
+                if (error == "STR_OZ_ERR_NEWS_NOT_YOUR_VOICE" && json != "")
+                {
+                    OZ_NewsFail nf = new OZ_NewsFail();
+                    string ferr;
+                    if (JsonFileLoader<OZ_NewsFail>.LoadData(json, nf, ferr) && nf && nf.Allowed && nf.Allowed.Count() > 0)
+                    {
+                        // Склеюємо ПІСЛЯ розбору й один раз: кожна склейка --
+                        // виділення, а конверт розібрав серіалізатор.
+                        string names = nf.Allowed[0];
+                        for (int ai = 1; ai < nf.Allowed.Count(); ai++)
+                            names = names + ", " + nf.Allowed[ai];
+                        said = said + "  " + names;
+                    }
                 }
+
+                Refused(said);
+                return;
             }
 
             SetHintSticky("NewsHint", "#" + error);
@@ -404,12 +425,12 @@ class OZ_PdaPageNews : OZ_PdaPage
         // круг, і гравець чекав би на те, що бачить сам.
         if (title.Trim() == "")
         {
-            SetHintSticky("NewsHint", "#STR_OZ_ERR_NEWS_NO_TITLE");
+            Refused(Widget.TranslateString("#STR_OZ_ERR_NEWS_NO_TITLE"));
             return;
         }
         if (body.Trim() == "")
         {
-            SetHintSticky("NewsHint", "#STR_OZ_ERR_NEWS_NO_BODY");
+            Refused(Widget.TranslateString("#STR_OZ_ERR_NEWS_NO_BODY"));
             return;
         }
 
