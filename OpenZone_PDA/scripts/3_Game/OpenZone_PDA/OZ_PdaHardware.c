@@ -256,6 +256,11 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         }
     }
 
+    // WARNINGS -- ЦЕ «Я ЩОСЬ ПОЛАГОДИВ», А НЕ «Я ЩОСЬ ПОМІТИВ». Те саме
+    // правило й та сама причина, що в OZ_PdaProfilesConfig.Validate: лоадер
+    // ядра пише файл назад саме за цим числом, і скарга, після якої об'єкт
+    // у пам'яті не змінився, переписувала Hardware.json байт у байт на
+    // кожному буті (task-57d, §2).
     override void Validate(out int warnings)
     {
         warnings = 0;
@@ -330,20 +335,17 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         {
             OZ_ModuleSpec m = Modules[i];
 
+            // СКАРГА БЕЗ ПОЧИНКИ НЕ РАХУЄТЬСЯ (див. шапку Validate): плату
+            // з непідвантаженого мода лікує склад сервера, а не перезапис
+            // файла нашою ж копією.
             if (!GetGame().ConfigIsExisting("CfgVehicles " + m.ClassName))
-            {
                 OZ_Log.Warn("module class \"" + m.ClassName + "\" is not in CfgVehicles - is its mod loaded?");
-                warnings++;
-            }
 
             if (!m.EnablesPages)
                 m.EnablesPages = new array<string>();
 
             if (m.Kind == "")
-            {
                 OZ_Log.Warn("module \"" + m.ClassName + "\" has no Kind - it will attach but do nothing");
-                warnings++;
-            }
 
             if (m.RangeM < 0)
             {
@@ -381,10 +383,7 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         for (int c = 0; c < Carriers.Count(); c++)
         {
             if (!GetGame().ConfigIsExisting("CfgVehicles " + Carriers[c].ClassName))
-            {
                 OZ_Log.Warn("carrier class \"" + Carriers[c].ClassName + "\" is not in CfgVehicles - is its mod loaded?");
-                warnings++;
-            }
         }
     }
 }
