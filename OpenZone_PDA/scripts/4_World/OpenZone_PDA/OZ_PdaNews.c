@@ -31,6 +31,12 @@ class OZ_NewsList
 {
     ref array<ref OZ_NewsItem> Items;
 
+    // ДЕ ПРОДОВЖИТИ, і це ФАКТ, а не здогад (ТЗ-5 R-D1.1/R-D1.2). Стеля в
+    // п'ятдесят постів знята: стрічка тримає все, тому вона більше не їде
+    // одним конвертом. Порожній рядок означає «глибше нічого немає» --
+    // міст це перевірив, а не припустив.
+    string Next = "";
+
     void OZ_NewsList()
     {
         Items = new array<ref OZ_NewsItem>();
@@ -41,6 +47,7 @@ class OZ_NewsList
     OZ_NewsList Copy()
     {
         OZ_NewsList c = new OZ_NewsList();
+        c.Next = Next;
         if (Items)
         {
             for (int i = 0; i < Items.Count(); i++)
@@ -59,7 +66,26 @@ class OZ_NewsView
     string Title = "";
     string Who   = "";
     string At    = "";
-    string Body  = "";
+
+    // ТІЛО -- МАСИВ КУСКІВ, А НЕ РЯДОК (ТЗ-5 R-D1.4/R-D1.5).
+    //
+    // JsonFileLoader мовчки ріже КОЖНЕ строкове значення JSON на 1023
+    // байтах при розборі -- зміряно на стенді 2026-08-28. Тобто жодне
+    // одиночне поле не здатне привезти довгий допис, скільки б кусків не
+    // їхало в самому конверті: стеля стоїть на розборі, а не на транспорті.
+    // Масив коротких рядків здатен; міст ріже тіло по ≤900 байтів ПО
+    // ГРАНИЦЯХ РЯДКІВ, а сторінка склеює при відрисовці.
+    ref array<string> Body;
+
+    // Стартове повідомлення видалили в Discord (R-D1.3). Це не те саме, що
+    // допис без тексту: сторінка каже «Дані видалено» прямим текстом
+    // замість порожньої панелі, яку нікому пояснити.
+    bool Deleted = false;
+
+    void OZ_NewsView()
+    {
+        Body = new array<string>();
+    }
 }
 
 class OZ_NewsRef
@@ -70,6 +96,19 @@ class OZ_NewsRef
 class OZ_NewsFail
 {
     string Error;
+
+    // ЧИМ ЖЕ ТОДІ МОЖНА ПІДПИСАТИ (ТЗ-6 R1.3, приймання 5.3).
+    //
+    // Відмова «не твоя персона» без переліку доступних -- це відповідь, від
+    // якої лідер іде читати вихідники. Поле знімали у фазі D саме тому, що
+    // жоден ігровий тип його не оголошував; полагодити це можна лише
+    // оголосивши -- ось воно.
+    ref array<string> Allowed;
+
+    void OZ_NewsFail()
+    {
+        Allowed = new array<string>();
+    }
 
     // Слова моста -> ключі таблиці рядків. Міст відмовляє СЛОВАМИ (ТЗ-6 R3.3),
     // і кожне з них тут має свій переклад; невідоме слово -- «внутрішня»,
@@ -118,7 +157,10 @@ class OZ_NewsReply : OZ_BridgeReply
             // Слово моста -- у лог, ключ -- гравцеві. Адмін читає лог, гравець
             // -- екран; обом потрібне своє.
             OZ_Log.Info("news: " + m_Op + " refused by the bridge: " + fail.Error);
-            OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_NEWS, m_Op, false, "", OZ_NewsFail.KeyOf(fail.Error));
+            // Тіло відмови їде РАЗОМ із ключем: у ньому перелік доступних
+            // персон (ТЗ-6 R1.3). Порожнім воно було, поки відмова несла
+            // саме лише слово, і сторінці не було з чого скласти пораду.
+            OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_NEWS, m_Op, false, json, OZ_NewsFail.KeyOf(fail.Error));
             return;
         }
 
@@ -140,6 +182,11 @@ class OZ_NewsReply : OZ_BridgeReply
 class OZ_NewsAskList
 {
     string Uid;
+
+    // Курсор сторінки стрічки: порожній -- «найновіші». Маршрут "voices"
+    // возить той самий лист і це поле просто не читає (JsonFileLoader мовчки
+    // пропускає зайві ключі), тому другого класу на одне поле тут немає.
+    string Cursor = "";
 }
 
 // ---- лідер пише зі свого приладу (ТЗ-6 R2.1) ----
@@ -302,9 +349,23 @@ class OZ_PdaHandlerNews : OZ_PageHandler
         string err;
         string letter;
 
-        // "list" і "voices" -- ОДИН лист {Uid} на два маршрути.
-        if (op == "list" || op == "voices")
-            return AskUid(uid, op, "v1/news/" + op, error);
+        // "list" і "voices" -- ОДИН лист {Uid} на два маршрути; у списку до
+        // нього додається курсор сторінки, який приносить клієнт.
+        if (op == "voices")
+            return AskUid(uid, op, "v1/news/voices", "", error);
+
+        if (op == "list")
+        {
+            // Курсор -- РЯДОК МОСТА, і клієнт возить його як є: сторінка
+            // отримала його з попередньої відповіді й не вигадує. Порожній
+            // (або зіпсований лист) означає «з початку стрічки».
+            OZ_NewsAskList want = new OZ_NewsAskList();
+            string cursor = "";
+            if (json != "" && JsonFileLoader<OZ_NewsAskList>.LoadData(json, want, err) && want)
+                cursor = OZ_Text.Clip(want.Cursor, 128);
+
+            return AskUid(uid, op, "v1/news/list", cursor, error);
+        }
 
         if (op == "open")
         {
@@ -347,6 +408,32 @@ class OZ_PdaHandlerNews : OZ_PageHandler
                 return "";
             }
 
+            // ЗАДОВГЕ ТІЛО -- ВІДМОВА, А НЕ МОВЧАЗНИЙ ОБРУБОК (ТЗ-6 R3.3).
+            //
+            // Тут стояв клип: тіло, довше за стелю, їхало в гільдію
+            // половиною речення, і лідер бачив свій допис обрубаним уже
+            // після публікації. Панель VPP на такому ж тілі відмовляє з
+            // 2026-09-06 -- дві поверхні одного роду поводились по-різному,
+            // і різницю ніхто не замовляв (розбіжність 96 у звіті звірки).
+            //
+            // Стеля -- та сама, що вже є у приладу для нотаток
+            // (Tuning.NoteBodyMaxBytes, поставочно 1000 байтів): своєї
+            // другої тут заводити нема чого. Length() в Enforce байтовий.
+            if (body.Length() > OZ_PdaTune.NoteBodyMax())
+            {
+                string said = "news: post from " + uid + " rejected, body is ";
+                said = said + body.Length().ToString() + " b, ceiling is ";
+                said = said + OZ_PdaTune.NoteBodyMax().ToString();
+                OZ_Log.Info(said);
+                error = "STR_OZ_ERR_TOO_LONG";
+                return "";
+            }
+            if (title.Length() > OZ_PdaTune.NoteTitleMax())
+            {
+                error = "STR_OZ_ERR_TOO_LONG";
+                return "";
+            }
+
             // КЛІП ПЕРЕД МОСТОМ, як на кожному іншому текстовому шляху.
             //
             // Три поля з клієнта їхали в Discord як є: жодної стелі, жодної
@@ -376,11 +463,14 @@ class OZ_PdaHandlerNews : OZ_PageHandler
             // Кому належить голос, вирішує МІСТ (ТЗ-6 R2.3), тож гра того
             // права не переміряє; 190 байтів -- це ~95 кириличних літер,
             // щедро понад будь-яке осмислене ім'я, і не більше того.
+            // Заголовок і тіло вже пройшли межу вище -- клипувати їх нема
+            // потреби. Підпис клипується й далі: це стеля проти підробленого
+            // RPC, а не знання про ім'я персони.
             OZ_NewsPostAsk p = new OZ_NewsPostAsk();
             p.Uid   = uid;
             p.Who   = OZ_Text.Clip(from.Who, OZ_PdaConst.PERSONA_MAX_BYTES);
-            p.Title = OZ_Text.Clip(from.Title, OZ_PdaTune.NoteTitleMax());
-            p.Body  = OZ_Text.Clip(from.Body, OZ_PdaTune.NoteBodyMax());
+            p.Title = title;
+            p.Body  = body;
 
             if (!JsonFileLoader<OZ_NewsPostAsk>.MakeData(p, letter, err, false))
             {
@@ -396,11 +486,12 @@ class OZ_PdaHandlerNews : OZ_PageHandler
         return "";
     }
 
-    // Лист {Uid} за маршрутом. Дві операції з трьох мають рівно цю форму.
-    private string AskUid(string uid, string op, string route, out string error)
+    // Лист {Uid, Cursor} за маршрутом. Дві операції з трьох мають цю форму.
+    private string AskUid(string uid, string op, string route, string cursor, out string error)
     {
         OZ_NewsAskList a = new OZ_NewsAskList();
-        a.Uid = uid;
+        a.Uid    = uid;
+        a.Cursor = cursor;
 
         string letter;
         string err;

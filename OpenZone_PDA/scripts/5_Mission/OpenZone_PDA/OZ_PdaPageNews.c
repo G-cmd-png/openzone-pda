@@ -13,6 +13,14 @@ class OZ_PdaPageNews : OZ_PdaPage
     private ref OZ_NewsList m_List;
     private string m_OpenId = "";
 
+    // Стрічка більше не влазить в один конверт: постів у базі моста стільки,
+    // скільки їх написали (ТЗ-5 R-D1.1). Кнопка «ЩЕ» ходить по сторінках
+    // курсором, як «старіше» в чаті, і ховається, коли міст сказав, що
+    // глибше нічого немає.
+    private Widget m_BtnMore;
+    private string m_Next  = "";
+    private bool   m_Busy  = false;
+
     // Перо лідера.
     private Widget m_Compose;
     private Widget m_BtnWrite;
@@ -33,11 +41,15 @@ class OZ_PdaPageNews : OZ_PdaPage
 
         m_Compose  = Wgt("ComposePanel");
         m_BtnWrite = Wgt("BtnWrite");
+        m_BtnMore  = Wgt("BtnMore");
         if (m_Compose)
             m_Compose.Show(false);
         if (m_BtnWrite)
             m_BtnWrite.Show(false);
+        if (m_BtnMore)
+            m_BtnMore.Show(false);
 
+        SetText("BtnMoreText",      "#STR_OZ_NEWS_MORE");
         SetText("BtnWriteText",     "#STR_OZ_NEWS_WRITE");
         SetText("BtnCmpSendText",   "#STR_OZ_NEWS_SEND");
         SetText("BtnCmpCancelText", "#STR_OZ_NEWS_CANCEL");
@@ -47,7 +59,11 @@ class OZ_PdaPageNews : OZ_PdaPage
     override void OnSelected()
     {
         ClearHintHold();
-        OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "list", "{}");
+        // З початку стрічки: сторінка відкрилась заново, і сторінки, набрані
+        // минулого разу, до неї не належать.
+        m_Next = "";
+        m_Busy = false;
+        AskPage("");
 
         // Хто я для новин -- питаємо щоразу: грант могли зняти, поки сторінка
         // була закрита (приймання 5.9), і кнопка мусить зникнути разом із ним.
@@ -99,6 +115,19 @@ class OZ_PdaPageNews : OZ_PdaPage
             return true;
         }
 
+        if (nm == "BtnMore")
+        {
+            // Один запит на натискання: поки сторінка не приїхала, кнопка
+            // каже це й нічого не шле -- інакше три кліки дали б три однакові
+            // сторінки, вставлені тричі.
+            if (m_Busy || m_Next == "")
+                return true;
+            m_Busy = true;
+            SetText("BtnMoreText", "#STR_OZ_CHAT_LOADING");
+            AskPage(m_Next);
+            return true;
+        }
+
         // Рядок поста. Ім'я віджета -- Id треда форуму.
         if (w.GetUserID() == 7)
         {
@@ -131,6 +160,27 @@ class OZ_PdaPageNews : OZ_PdaPage
         return OnPageClick(w, x, y);
     }
 
+    // Одна сторінка стрічки. Курсор -- рядок моста; порожній означає
+    // «найновіші» (ТЗ-5 R-D1.2).
+    private void AskPage(string cursor)
+    {
+        OZ_NewsAskList a = new OZ_NewsAskList();
+        a.Cursor = cursor;
+
+        string json;
+        string err;
+        if (!JsonFileLoader<OZ_NewsAskList>.MakeData(a, json, err, false))
+            return;
+
+        OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "list", json);
+
+        // Хто я для новин -- питаємо разом зі стрічкою лише на першій
+        // сторінці: грант могли зняти, поки сторінка була закрита
+        // (приймання 5.9), але «ще» про права нічого не змінює.
+        if (cursor == "")
+            OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "voices", "{}");
+    }
+
     override void OnResponse(string op, bool ok, string json, string error)
     {
         if (!ok)
@@ -143,6 +193,33 @@ class OZ_PdaPageNews : OZ_PdaPage
                     m_BtnWrite.Show(false);
                 return;
             }
+
+            if (op == "list")
+            {
+                m_Busy = false;
+                SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
+            }
+
+            // ВІДМОВА «НЕ ТВОЯ ПЕРСОНА» НЕСЕ ПЕРЕЛІК (ТЗ-6 R1.3, приймання
+            // 5.3). Сказати лідерові, що ім'я не його, і не сказати, які
+            // його, -- це відповідь, після якої йдуть питати адміна.
+            if (op == "post" && error == "STR_OZ_ERR_NEWS_NOT_YOUR_VOICE" && json != "")
+            {
+                OZ_NewsFail nf = new OZ_NewsFail();
+                string ferr;
+                if (JsonFileLoader<OZ_NewsFail>.LoadData(json, nf, ferr) && nf && nf.Allowed && nf.Allowed.Count() > 0)
+                {
+                    // Склеюємо ПІСЛЯ розбору й один раз: кожна склейка --
+                    // виділення, а конверт розібрав серіалізатор.
+                    string names = nf.Allowed[0];
+                    for (int ai = 1; ai < nf.Allowed.Count(); ai++)
+                        names = names + ", " + nf.Allowed[ai];
+
+                    SetHintSticky("NewsHint", Widget.TranslateString("#" + error) + "  " + names);
+                    return;
+                }
+            }
+
             SetHintSticky("NewsHint", "#" + error);
             return;
         }
@@ -192,14 +269,17 @@ class OZ_PdaPageNews : OZ_PdaPage
                 be.SetText("");
 
             SetHint("NewsHint", "#STR_OZ_NEWS_POSTED");
-            OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "list", "{}");
+            m_Next = "";
+            AskPage("");
             return;
         }
 
         if (op == "push")
         {
-            // Свіжий пост -- перечитуємо перелік, поки сторінка відкрита.
-            OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "list", "{}");
+            // Свіжий пост -- перечитуємо перелік З ПОЧАТКУ: він лягає
+            // зверху, і сторінки, набрані до нього, посунулись.
+            m_Next = "";
+            AskPage("");
             return;
         }
 
@@ -207,11 +287,33 @@ class OZ_PdaPageNews : OZ_PdaPage
         {
             OZ_NewsList l = new OZ_NewsList();
             if (!JsonFileLoader<OZ_NewsList>.LoadData(json, l, err) || !l)
+            {
+                m_Busy = false;
+                SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
                 return;
+            }
 
             // Копія: Items виділив серіалізатор, а Repaint ходить по них
             // на кожному кліку рядка.
-            m_List = l.Copy();
+            OZ_NewsList page = l.Copy();
+
+            // ДОКЛАДАЄМО, а не заміняємо, якщо це продовження. Перша
+            // сторінка приходить з порожнім m_Next, і тоді стрічка
+            // починається наново.
+            if (m_Busy && m_List && m_List.Items)
+            {
+                for (int pi = 0; pi < page.Items.Count(); pi++)
+                    m_List.Items.Insert(page.Items[pi]);
+            }
+            else
+            {
+                m_List = page;
+            }
+
+            m_Next = page.Next;
+            m_Busy = false;
+            SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
+
             Repaint();
             return;
         }
@@ -226,7 +328,22 @@ class OZ_PdaPageNews : OZ_PdaPage
             string ptitle = v.Title;
             string pwho   = v.Who;
             string pat    = v.At;
-            string pbody  = v.Body;
+
+            // КЛЕЇТЬ КЛІЄНТ (ТЗ-5 R-D1.5). Тіло приїхало масивом кусків по
+            // ≤900 байтів, порізаних мостом ПО ГРАНИЦЯХ РЯДКІВ: у скрипті
+            // рядок такої межі не має, і склеєне тіло малюється цілим.
+            string pbody = "";
+            if (v.Body)
+            {
+                for (int bi = 0; bi < v.Body.Count(); bi++)
+                    pbody = pbody + v.Body[bi];
+            }
+
+            // Стартове повідомлення видалили в Discord (R-D1.3, H24). Прямим
+            // текстом, а не порожньою панеллю: допис без пояснення читається
+            // як поломка сторінки.
+            if (v.Deleted && pbody == "")
+                pbody = Widget.TranslateString("#STR_OZ_NEWS_DELETED");
 
             SetText("PostTitle", ptitle);
             SetText("PostMeta", pwho + "   " + Day(pat));
@@ -336,6 +453,11 @@ class OZ_PdaPageNews : OZ_PdaPage
         int n = 0;
         if (m_List && m_List.Items)
             n = m_List.Items.Count();
+
+        // Показуємо, коли міст сказав, що глибше є ще (ТЗ-4 R-D2.4 -- те саме
+        // правило, що в чату: прапорець мусить бути фактом).
+        if (m_BtnMore)
+            m_BtnMore.Show(m_Next != "");
 
         if (n == 0)
         {

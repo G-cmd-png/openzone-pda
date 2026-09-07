@@ -45,7 +45,7 @@ FrameWidgetClass OZ_PageNews {
   ScrollWidgetClass NewsScroll {
    visible 1
    position 20 60
-   size 400 438
+   size 400 410
    hexactpos 1
    vexactpos 1
    hexactsize 1
@@ -66,6 +66,51 @@ FrameWidgetClass OZ_PageNews {
      Padding 0
      Margin 0
      "Size To Content V" 1
+    }
+   }
+  }
+  // Наступна сторінка стрічки. Стеля в 50 постів знята (ТЗ-5 R-D1.1), тож перелік їде сторінками по курсору; кнопка показується, лише коли міст сказав, що глибше є ще -- так само як BtnOlder у чаті.
+  ButtonWidgetClass BtnMore {
+   visible 0
+   position 20 476
+   size 400 22
+   hexactpos 1
+   vexactpos 1
+   hexactsize 1
+   vexactsize 1
+   text ""
+   priority 2
+   {
+    PanelWidgetClass BtnMoreBg {
+     visible 1
+     ignorepointer 1
+     position 0 0
+     size 400 22
+     hexactpos 1
+     vexactpos 1
+     hexactsize 1
+     vexactsize 1
+     color 0.1 0.135 0.17 1
+     priority 1
+     style rover_sim_colorable
+    }
+    TextWidgetClass BtnMoreText {
+     visible 1
+     ignorepointer 1
+     position 0 0
+     size 400 22
+     hexactpos 1
+     vexactpos 1
+     hexactsize 1
+     vexactsize 1
+     color 0.31 0.71 0.91 1
+     priority 2
+     text ""
+     font "gui/fonts/sdf_MetronBook24"
+     "exact text" 1
+     "exact text size" 13
+     "text halign" center
+     "text valign" center
     }
    }
   }

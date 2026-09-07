@@ -18,7 +18,8 @@
             ]}},
             {"rule":  {"name": "RowLine"}}
           ]}}
-      }}}
+      }}},
+      {"button": {"name": "BtnMore", "hidden": true, "h": 22, "font": "small", "edge": false, "bg": "$panel", "note": "Наступна сторінка стрічки. Стеля в 50 постів знята (ТЗ-5 R-D1.1), тож перелік їде сторінками по курсору; кнопка показується, лише коли міст сказав, що глибше є ще -- так само як BtnOlder у чаті."}}
     ]}},
     {"panel": {"name": "NewsEdge", "w": 1, "color": "$edge"}},
     {"frame": {"name": "PostPane", "w": "fill", "children": [
