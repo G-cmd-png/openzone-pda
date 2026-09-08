@@ -9,7 +9,7 @@ FrameWidgetClass OZ_PageDevice {
  hexactsize 1
  vexactsize 1
  {
-  // Приховане рішенням власника 2026-08-29 -- і в ньому лишилась САМА КАРТИНКА. Три підписи, що лежали тут поруч, переїхали в ОБЛАДНАННЯ (TitleRow нижче): ховали третину сторінки, яку з'їдало прев'ю, а забрали з очей ще й єдине місце, де екран називав СВІЙ пристрій. Скрипт кладе сюди предмет і далі.
+  // Приховане рішенням власника 2026-08-29 -- і в ньому лишилась САМА КАРТИНКА. Два підписи (TitleName, TitlePlace), що лежали тут поруч, переїхали в ОБЛАДНАННЯ (TitleRow нижче): ховали третину сторінки, яку з'їдало прев'ю, а забрали з очей ще й єдине місце, де екран називав СВІЙ пристрій. Третій підпис (ProfileId/ClassName рядком) прибрав огляд Task 72 зовсім -- сирі рушійні ідентифікатори без перекладу гравцю не потрібні, назву й місце й так дають TitleName і TitlePlace. Скрипт кладе сюди предмет і далі.
   PanelWidgetClass PreviewPane {
    visible 0
    ignorepointer 1
@@ -633,35 +633,17 @@ FrameWidgetClass OZ_PageDevice {
         }
        }
       }
-      TextWidgetClass TitleProfile {
-       visible 1
-       ignorepointer 1
-       position 0 258
-       size 611 20
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.58 0.65 0.71 1
-       priority 6
-       text ""
-       font "gui/fonts/sdf_MetronBook24"
-       "exact text" 1
-       "exact text size" 14
-       "text halign" left
-       "text valign" center
-      }
       TextWidgetClass BaysLabel {
        visible 1
        ignorepointer 1
-       position 0 284
+       position 0 258
        size 611 22
        hexactpos 1
        vexactpos 1
        hexactsize 1
        vexactsize 1
        color 0.58 0.65 0.71 1
-       priority 7
+       priority 6
        text "#STR_OZ_DEV_BAYS"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
@@ -672,7 +654,25 @@ FrameWidgetClass OZ_PageDevice {
       TextWidgetClass BayText0 {
        visible 1
        ignorepointer 1
-       position 0 312
+       position 0 286
+       size 611 24
+       hexactpos 1
+       vexactpos 1
+       hexactsize 1
+       vexactsize 1
+       color 0.9 0.93 0.95 1
+       priority 7
+       text ""
+       font "gui/fonts/sdf_MetronBook24"
+       "exact text" 1
+       "exact text size" 15
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass BayText1 {
+       visible 1
+       ignorepointer 1
+       position 0 316
        size 611 24
        hexactpos 1
        vexactpos 1
@@ -687,10 +687,10 @@ FrameWidgetClass OZ_PageDevice {
        "text halign" left
        "text valign" center
       }
-      TextWidgetClass BayText1 {
+      TextWidgetClass BayText2 {
        visible 1
        ignorepointer 1
-       position 0 342
+       position 0 346
        size 611 24
        hexactpos 1
        vexactpos 1
@@ -705,10 +705,10 @@ FrameWidgetClass OZ_PageDevice {
        "text halign" left
        "text valign" center
       }
-      TextWidgetClass BayText2 {
+      TextWidgetClass CarrierText {
        visible 1
        ignorepointer 1
-       position 0 372
+       position 0 376
        size 611 24
        hexactpos 1
        vexactpos 1
@@ -723,27 +723,9 @@ FrameWidgetClass OZ_PageDevice {
        "text halign" left
        "text valign" center
       }
-      TextWidgetClass CarrierText {
-       visible 1
-       ignorepointer 1
-       position 0 402
-       size 611 24
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.9 0.93 0.95 1
-       priority 11
-       text ""
-       font "gui/fonts/sdf_MetronBook24"
-       "exact text" 1
-       "exact text size" 15
-       "text halign" left
-       "text valign" center
-      }
       ButtonWidgetClass BtnCarWriteM {
        visible 0
-       position 0 432
+       position 0 406
        size 140 28
        hexactpos 1
        vexactpos 1
@@ -800,7 +782,7 @@ FrameWidgetClass OZ_PageDevice {
       }
       ButtonWidgetClass BtnCarWriteN {
        visible 0
-       position 150 432
+       position 150 406
        size 140 28
        hexactpos 1
        vexactpos 1
@@ -857,7 +839,7 @@ FrameWidgetClass OZ_PageDevice {
       }
       ButtonWidgetClass BtnCarView {
        visible 0
-       position 300 432
+       position 300 406
        size 140 28
        hexactpos 1
        vexactpos 1
@@ -914,7 +896,7 @@ FrameWidgetClass OZ_PageDevice {
       }
       ButtonWidgetClass BtnCarErase {
        visible 0
-       position 450 432
+       position 450 406
        size 140 28
        hexactpos 1
        vexactpos 1
