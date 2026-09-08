@@ -1729,6 +1729,12 @@ class OZ_PdaModule : CF_ModuleWorld
         OZ_PdaModules.Register(new OZ_SpyAntennaBehaviour());
         OZ_BridgeClient.RegisterUidProvider(new OZ_PdaUidProvider());
 
+        // ПЕРМАДЕС: стираємо СВОЄ, і більше нічиє. Шість полів файла гравця,
+        // які пише лише КПК, до 2026-09-08 чистив мод фракцій -- через що
+        // сервер core+PDA без нього не мав вайпу зовсім. Ядро тримає конвеєр,
+        // ми лише кажемо, що в ньому наше.
+        OZ_Wipe.Register("pda", new OZ_PdaWiper());
+
         OZ_PdaProfiles.ServerLoad();
         OZ_PdaHardware.ServerLoad();
         OZ_PdaTuning.ServerLoad();
