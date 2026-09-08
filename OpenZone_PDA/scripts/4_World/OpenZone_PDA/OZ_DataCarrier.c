@@ -22,72 +22,44 @@
 // носії. Замість цього носій має ОДНЕ число: скільки записів на нього влазить.
 // Мітка -- запис, нотатка -- запис, точка маршруту -- запис, частота -- запис.
 // Носій не питає, що це, і саме тому нічого не мусить знати наперед.
-
-// Одна секція носія. Рід -- домовленість між тим, хто пише, і тим, хто читає;
-// сюди він приходить рядком і тут рядком і лишається.
-class OZ_CarrierSection
-{
-    string Kind    = "";
-    string Payload = "";
-    // Скільки записів коштує ця секція. Рахує ТОЙ, ХТО ПИШЕ: лише він знає,
-    // що всередині його JSON. Носієві досить суми.
-    int    Records = 0;
-}
+//
+// САМІ СЕКЦІЇ живуть у OZ_SectionStore -- спільному з приладом сховищі разом
+// із форматом запису (рішення власника 2026-09-08). Носієві лишається те, що
+// в нього своє: стеля з таблиці заліза й право писати.
 
 class OZ_DataCarrier_Base : ItemBase
 {
-    private ref array<ref OZ_CarrierSection> m_Sections;
+    // Секції -- у СПІЛЬНОМУ сховищі (рішення власника 2026-09-08): та сама
+    // OZ_SectionStore, що й у приладу, разом із форматом запису. Тут лишились
+    // тільки імена, під які писався решта носія, і стеля, яка в носія своя.
+    private ref OZ_SectionStore m_Store;
 
     void OZ_DataCarrier_Base()
     {
-        m_Sections = new array<ref OZ_CarrierSection>();
+        m_Store = new OZ_SectionStore();
     }
 
     // ------------------------------------------------------------ читання
 
-    private OZ_CarrierSection Find(string kind)
-    {
-        if (!m_Sections)
-            return null;
-
-        for (int i = 0; i < m_Sections.Count(); i++)
-        {
-            if (m_Sections[i].Kind == kind)
-                return m_Sections[i];
-        }
-        return null;
-    }
-
     string OZ_Read(string kind)
     {
-        OZ_CarrierSection s = Find(kind);
-        if (!s)
-            return "";
-        return s.Payload;
+        return m_Store.Read(kind);
     }
 
     // -1 -- секції немає. Нуль -- секція є й порожня, що не те саме.
     int OZ_Records(string kind)
     {
-        OZ_CarrierSection s = Find(kind);
-        if (!s)
-            return -1;
-        return s.Records;
+        return m_Store.Records(kind);
     }
 
     bool OZ_IsWritten()
     {
-        return m_Sections && m_Sections.Count() > 0;
+        return m_Store.Any();
     }
 
     int OZ_Used()
     {
-        int total = 0;
-        if (!m_Sections)
-            return 0;
-        for (int i = 0; i < m_Sections.Count(); i++)
-            total += m_Sections[i].Records;
-        return total;
+        return m_Store.Used();
     }
 
     // Стеля цього класу носія. Нуль у таблиці означає «без стелі», і назовні
@@ -154,36 +126,22 @@ class OZ_DataCarrier_Base : ItemBase
             return false;
         }
 
-        OZ_CarrierSection s = Find(kind);
-        if (!s)
-        {
-            s = new OZ_CarrierSection();
-            s.Kind = kind;
-            m_Sections.Insert(s);
-        }
-
-        s.Payload = json;
-        s.Records = records;
+        m_Store.Put(kind, json, records);
         return true;
     }
 
     void OZ_Drop(string kind)
     {
-        if (!GetGame().IsServer() || !m_Sections)
+        if (!GetGame().IsServer())
             return;
-
-        for (int i = m_Sections.Count() - 1; i >= 0; i--)
-        {
-            if (m_Sections[i].Kind == kind)
-                m_Sections.Remove(i);
-        }
+        m_Store.Drop(kind);
     }
 
     void OZ_Erase()
     {
         if (!GetGame().IsServer())
             return;
-        m_Sections.Clear();
+        m_Store.Clear();
     }
 
     // ------------------------------------------------- знайомі роди КПК
@@ -229,21 +187,7 @@ class OZ_DataCarrier_Base : ItemBase
             return;
 
         ctx.Write("kv1");
-        ctx.Write(m_Sections.Count());
-
-        // ПРИЛАД. Запис предмета трапляється не тоді, коли гравець щось
-        // натиснув, а через невизначений час після -- і саме тому «впало
-        // через кілька хвилин після дії» без цього рядка неможливо
-        // прив'язати ні до дії, ні до запису.
-        for (int i = 0; i < m_Sections.Count(); i++)
-        {
-            OZ_CarrierSection s = m_Sections[i];
-            ctx.Write(s.Kind);
-            ctx.Write(s.Records);
-            // Секції -- шматками: стеля рядка сховища 1023 байти, подробиці
-            // в OZ_StoreBig.
-            OZ_StoreBig.Write(ctx, s.Payload);
-        }
+        m_Store.WriteTo(ctx);
     }
 
     override bool CF_OnStoreLoad(CF_ModStorageMap storage)
@@ -267,28 +211,10 @@ class OZ_DataCarrier_Base : ItemBase
             return true;
         }
 
-        int count;
-        if (!ctx.Read(count))
-            return false;
-
-        m_Sections.Clear();
-        for (int i = 0; i < count; i++)
-        {
-            OZ_CarrierSection s = new OZ_CarrierSection();
-            if (!ctx.Read(s.Kind))
-                return false;
-            if (!ctx.Read(s.Records))
-                return false;
-            if (!OZ_StoreBig.Read(ctx, s.Payload))
-                return false;
-
-            // ЧУЖИЙ РІД ЗБЕРІГАЄТЬСЯ. Раніше він тут губився -- і саме це
-            // робило носій нерозширюваним: мод міг записати своє й побачити,
-            // що після перезаходу цього немає.
-            m_Sections.Insert(s);
-        }
-
-        return true;
+        // Версією носій не гейтиться -- його гейт це мітка вище, -- тому 0.
+        // ЧУЖИЙ РІД сховище зберігає саме; раніше він тут губився, і саме це
+        // робило носій нерозширюваним.
+        return m_Store.ReadFrom(ctx, 0);
     }
 }
 

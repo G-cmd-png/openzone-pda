@@ -71,19 +71,22 @@ class OZ_PDA_Base : ItemBase
     // Один на пристрій: вести дві нитки одночасно однаково нема кому.
     private string m_RouteJson = "";
 
-    // Розділи ЧУЖИХ МОДУЛІВ -- МАСИВОМ, а не одним JSON-документом.
+    // Розділи ЧУЖИХ МОДУЛІВ -- у ТОМУ Ж сховищі секцій, що й у носія
+    // (рішення власника 2026-09-08). Формат запису -- там же, в OZ_SectionStore,
+    // і саме тому він не може розійтися між приладом і носієм.
     //
-    // Документом воно й було, і саме це валило сервер. Корисне навантаження
-    // розділу -- САМЕ ПО СОБІ JSON; загорнувши його в поле іншого JSON, ми
-    // отримали JSON усередині JSON, тобто екранування при записі й
-    // розекранування при читанні. Розібрати те, що звідти поверталось,
-    // JsonFileLoader не міг: 2026-08-31 сервер помирав нативно ПРЯМО В
-    // LoadData -- лог обривався між «payload NNN bytes» і наступним рядком.
+    // Чому розділи взагалі МАСИВОМ, а не одним JSON-документом: документом
+    // воно й було, і саме це валило сервер. Корисне навантаження розділу --
+    // САМЕ ПО СОБІ JSON; загорнувши його в поле іншого JSON, ми отримали JSON
+    // усередині JSON, тобто екранування при записі й розекранування при
+    // читанні. Розібрати те, що звідти поверталось, JsonFileLoader не міг:
+    // 2026-08-31 сервер помирав нативно ПРЯМО В LoadData -- лог обривався між
+    // «payload NNN bytes» і наступним рядком.
     //
     // Носій цієї помилки не мав ніколи: він пише Kind, Records і Payload
-    // ОКРЕМИМИ записами сховища й нічого ні в що не загортає. Тут тепер так
-    // само -- і розбирається лише те, що поклав сам власник роду.
-    private ref array<ref OZ_PdaSection> m_Sections;
+    // ОКРЕМИМИ записами сховища й нічого ні в що не загортає. Тут так само --
+    // тепер уже тим самим кодом.
+    private ref OZ_SectionStore m_Store;
 
     // СКІЛЬКИ ЯЧЕЙОК ЗАЙНЯТО ВЛАСНИМИ РОДАМИ -- порахований раз і збережений.
     //
@@ -160,7 +163,7 @@ class OZ_PDA_Base : ItemBase
         RegisterNetSyncVariableBool("m_Unlocked");
         RegisterNetSyncVariableBool("m_HasPinS");
 
-        m_Sections  = new array<ref OZ_PdaSection>();
+        m_Store     = new OZ_SectionStore();
 
         m_FailUid   = new array<string>();
         m_FailCount = new array<int>();
@@ -835,39 +838,27 @@ class OZ_PDA_Base : ItemBase
 
     // ------------------------------------------------- розділи чужих модулів
     //
-    // Те саме, що вміє носій, але НА САМОМУ ПРИЛАДІ й зі стелею НА КОЖЕН
-    // РОЗДІЛ окремо -- див. OZ_PdaSections про те, чому ці дві стелі різні.
+    // Те саме сховище, що й у носія, але НА САМОМУ ПРИЛАДІ й з іншою стелею --
+    // чому вони різні, сказано в шапці OZ_SectionStore.
     //
     // Модуль, який хоче тримати своє в пристрої, кличе три методи й більше
-    // нічого не знає ні про КПК, ні про його сховище.
-
-    private OZ_PdaSection KindFind(string kind)
-    {
-        if (!m_Sections)
-            return null;
-
-        for (int i = 0; i < m_Sections.Count(); i++)
-        {
-            if (m_Sections[i].Kind == kind)
-                return m_Sections[i];
-        }
-        return null;
-    }
+    // нічого не знає ні про КПК, ні про його сховище. Імена цих трьох не
+    // мінялись, і жоден кличучий не помітив злиття.
 
     string OZ_KindRead(string kind)
     {
-        OZ_PdaSection s = KindFind(kind);
-        if (!s)
-            return "";
-        return s.Payload;
+        return m_Store.Read(kind);
     }
 
+    // НУЛЬ на відсутній розділ, а не -1, яким відповідає саме сховище: це
+    // число йде в OZ_RoomFor доданком до вільного місця, і -1 украло б там
+    // одну ячейку в роду, якого на приладі ще немає.
     int OZ_KindRecords(string kind)
     {
-        OZ_PdaSection s = KindFind(kind);
-        if (!s)
+        int n = m_Store.Records(kind);
+        if (n < 0)
             return 0;
-        return s.Records;
+        return n;
     }
 
     // ------------------------------------------------------- ЯЧЕЙКИ ПАМ'ЯТІ
@@ -930,15 +921,7 @@ class OZ_PDA_Base : ItemBase
 
     int OZ_Used()
     {
-        int n = OwnCells();
-
-        if (m_Sections)
-        {
-            for (int i = 0; i < m_Sections.Count(); i++)
-                n += m_Sections[i].Records;
-        }
-
-        return n;
+        return OwnCells() + m_Store.Used();
     }
 
     int OZ_Free()
@@ -973,26 +956,15 @@ class OZ_PDA_Base : ItemBase
             return false;
         }
 
-        OZ_PdaSection s = KindFind(kind);
-
         // Порожній запис -- це стирання розділу, а не розділ із порожнім
         // текстом: інакше прилад накопичував би мертві роди.
         if (json == "")
         {
-            if (s)
-                m_Sections.RemoveItem(s);
+            m_Store.Drop(kind);
             return true;
         }
 
-        if (!s)
-        {
-            s = new OZ_PdaSection();
-            s.Kind = kind;
-            m_Sections.Insert(s);
-        }
-
-        s.Payload = json;
-        s.Records = records;
+        m_Store.Put(kind, json, records);
         return true;
     }
 
@@ -1114,7 +1086,7 @@ class OZ_PDA_Base : ItemBase
         m_MarkersJson = "";
         m_NotesJson   = "";
         m_RouteJson   = "";
-        m_Sections.Clear();
+        m_Store.Clear();
         m_OwnCells    = -1;
         m_CrackUntil  = 0;
 
@@ -1604,18 +1576,10 @@ class OZ_PDA_Base : ItemBase
         // що нотатки й маршрут: носій -- знімне, чим переносять, а не те, де
         // приладом користуються.
         //
-        // ОКРЕМИМИ ЗАПИСАМИ, як у носія, а не одним JSON-документом. Корисне
-        // навантаження розділу саме по собі JSON, і загорнути його в поле
-        // іншого JSON означало покласти JSON усередину JSON -- на читанні
-        // назад воно валило сервер нативно, прямо в LoadData.
-        ctx.Write(m_Sections.Count());
-        for (int k = 0; k < m_Sections.Count(); k++)
-        {
-            OZ_PdaSection sec = m_Sections[k];
-            ctx.Write(sec.Kind);
-            ctx.Write(sec.Records);
-            OZ_StoreBig.Write(ctx, sec.Payload);
-        }
+        // ОКРЕМИМИ ЗАПИСАМИ, як у носія, а не одним JSON-документом -- і
+        // ТИМ САМИМ кодом, що в носія: порядок полів тут описано один раз,
+        // в OZ_SectionStore.WriteTo.
+        m_Store.WriteTo(ctx);
 
         // v7 -- знову В КІНЕЦЬ: зламаність квестового приладу (ТЗ-4 R-B3.2).
         ctx.Write(m_Cracked);
@@ -1669,29 +1633,10 @@ class OZ_PDA_Base : ItemBase
                 return false;
         }
 
-        if (ctx.GetVersion() >= 6)
-        {
-            int secs;
-            if (!ctx.Read(secs))
-                return false;
-
-            m_Sections.Clear();
-            for (int k = 0; k < secs; k++)
-            {
-                OZ_PdaSection sec = new OZ_PdaSection();
-                if (!ctx.Read(sec.Kind))
-                    return false;
-                if (!ctx.Read(sec.Records))
-                    return false;
-                if (!OZ_StoreBig.Read(ctx, sec.Payload))
-                    return false;
-
-                // ЧУЖИЙ РІД ЗБЕРІГАЄТЬСЯ, навіть якщо мода, що його писав,
-                // на сервері більше немає: інакше пам'ять приладу мовчки
-                // втрачала б чуже при кожному завантаженні.
-                m_Sections.Insert(sec);
-            }
-        }
+        // Розділи з'явились у v6, і саме це число сховище й гейтить: старіше
+        // збереження на цій позиції тримає чужі байти.
+        if (!m_Store.ReadFrom(ctx, 6))
+            return false;
 
         if (ctx.GetVersion() >= 7)
         {
