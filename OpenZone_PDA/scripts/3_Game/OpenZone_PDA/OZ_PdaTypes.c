@@ -66,10 +66,9 @@ class OZ_PdaDeviceStatus
     ref array<string> Pages;          // з чого будувати стрічку вкладок
     int    ModuleSlots = 0;
 
-    // «КПК без предмета» (D132): стан описує не річ, а дозвіл адміна. Клієнт
-    // за цим прапорцем не шукає сутності, не закриває екран через порожні
-    // руки й не малює заряд, якого немає.
-    bool   Virtual = false;
+    // Тут було поле Virtual -- прапорець «КПК без предмета» (D132). Рішення
+    // власника 2026-09-08: стан завжди описує РІЧ, і другого роду відповіді
+    // в клієнта немає.
 
     // Мережевий id САМЕ того КПК, про який відповів сервер, і чи він у руках.
     //
@@ -166,7 +165,6 @@ class OZ_PdaDeviceStatus
         c.ProfileId   = ProfileId;
         c.DisplayName = DisplayName;
         c.ModuleSlots = ModuleSlots;
-        c.Virtual     = Virtual;
         c.InHands     = InHands;
         c.NetLow      = NetLow;
         c.NetHigh     = NetHigh;

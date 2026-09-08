@@ -175,10 +175,6 @@ class OZ_PdaMenu : UIScriptedMenu
 
         OZ_ClientState.BindListener(null);
 
-        // Режим «без предмета» живе рівно один показ: наступне відкриття
-        // дією на справжньому приладі не має його успадкувати.
-        OZ_PdaMenuGate.ClearVirtual();
-
         array<string> excludes = new array<string>();
         excludes.Insert("menu");
         GetGame().GetMission().RemoveActiveInputExcludes(excludes, true);
@@ -238,9 +234,9 @@ class OZ_PdaMenu : UIScriptedMenu
         // Питаємо ТОЙ САМИЙ Device(), яким користуються ворота: правило про
         // «мій прилад» одне на весь мод.
         //
-        // Виняток один -- «КПК без предмета» (D132): за цим екраном сутності
-        // немає з самого початку, і порожні руки для нього не подія.
-        if (!OZ_PdaHud.Device() && !OZ_PdaMenuGate.Virtual())
+        // Винятку «КПК без предмета» (D132) тут більше немає: рішення
+        // власника 2026-09-08 прибрало вигаданий термінал зовсім.
+        if (!OZ_PdaHud.Device())
         {
             OZ_Log.Dbg("pda: the device left the player, closing the screen");
             CloseLater();
@@ -1114,11 +1110,6 @@ class OZ_PdaMenu : UIScriptedMenu
         TextWidget right = m_StatusRight;
 
         OZ_PDA_Base dev = OZ_PdaHud.Device();
-
-        // Без предмета заряду немає, і брехати про нього нема чого: у смузі
-        // стоїть ім'я режиму (D132).
-        if (left && !dev && OZ_PdaMenuGate.Virtual())
-            left.SetText("#STR_OZ_DEV_VIRTUAL");
 
         if (left && dev)
         {

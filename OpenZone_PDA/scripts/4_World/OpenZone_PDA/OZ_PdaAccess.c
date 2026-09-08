@@ -63,22 +63,17 @@ class OZ_PdaAccess : OZ_PageAccess
         // де ворота -- OZ_Perm.IsAdmin і більш ніщо. У цих же лишилось одне
         // правило без винятків: сторінка вимагає приладу.
 
+        // НЕМАЄ ПРИЛАДУ -- НЕМАЄ НІЧОГО, і винятку тут теж більше немає.
+        //
+        // Тут стояла гілка «віртуального КПК» (D132): без предмета ворота
+        // питали OZ_PdaLookup.VirtualFor/VirtualAllows і пускали того, кому
+        // адмін увімкнув вигаданий термінал. Рішення власника 2026-09-08:
+        // вигаданого приладу немає зовсім -- ані як стану, ані як дозволу,
+        // -- і кожна сторінка вимагає РЕЧІ. Тому будь-який обробник, що
+        // біжить після цих воріт, гарантовано має пристрій.
         OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(who);
         if (!pda)
-        {
-            // Пристрою немає -- лишається «віртуальний КПК», якщо його
-            // увімкнув адмін.
-            //
-            // Дві операції сторінки «Пристрій» пускаємо повз список сторінок:
-            // сам вхід (virtual_open) і стан (status). Без них віртуальний
-            // прилад не відкрити взагалі -- а вписувати "device" у
-            // VirtualDevice.Pages адмін не зобов'язаний і до D132 ніколи не
-            // мусив. Решта порожніми руками не проходить, як і раніше.
-            if (pageId == OZ_PdaConst.PAGE_DEVICE && (op == OZ_PdaConst.OP_VIRTUAL_OPEN || op == "status"))
-                return OZ_PdaLookup.VirtualFor(who.GetPlainId());
-
-            return OZ_PdaLookup.VirtualAllows(who.GetPlainId(), pageId);
-        }
+            return false;
 
         OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
         if (!prof)
@@ -328,54 +323,8 @@ class OZ_PdaLookup
         return PlayerBase.Cast(who.GetPlayer());
     }
 
-    static bool VirtualAllows(string uid, string pageId)
-    {
-        OZ_PdaProfilesConfig cfg = OZ_PdaProfiles.Get();
-        if (!cfg || !cfg.VirtualDevice || !cfg.VirtualDevice.Enabled)
-            return false;
-        if (!cfg.VirtualDevice.Pages)
-            return false;
-        if (cfg.VirtualDevice.Pages.Find(pageId) == -1)
-            return false;
-
-        return VirtualFor(uid);
-    }
-
-    // Чи положено цьому гравцеві віртуальний КПК ВЗАГАЛІ -- без питання про
-    // сторінку. Відповідь на «чи відкривати» (D132); сторінки потім питає
-    // VirtualAllows окремо, як і раніше.
-    static bool VirtualFor(string uid)
-    {
-        OZ_PdaProfilesConfig cfg = OZ_PdaProfiles.Get();
-        if (!cfg || !cfg.VirtualDevice || !cfg.VirtualDevice.Enabled)
-            return false;
-
-        // ОБМЕЖЕННЯ ПО ФРАКЦІЯХ -- те, заради чого поле й заводили.
-        //
-        // VirtualDevice.Factions лежав у конфізі з першого дня, потрапляв у
-        // приклад і в опис, і не читався НІДЕ. Адмін вписував туди «ecolog» --
-        // і віртуальний КПК діставався всьому серверу, мовчки. Конфіг, що
-        // обіцяє й не робить, гірший за конфіг, якого немає.
-        //
-        // Порожній список означає «всім»: інакше вмикання віртуального
-        // пристрою вимагало б ще й перелічити геть усі фракції.
-        if (!cfg.VirtualDevice.Factions)
-            return true;
-        if (cfg.VirtualDevice.Factions.Count() == 0)
-            return true;
-
-        // ОБИДВІ ОСІ, і кожна сама по собі відчиняє (ТЗ-1 R3.1). Адмін,
-        // що написав "stalkers", має на увазі «всім»; той, хто написав
-        // "duty", -- членам Боргу. Перевіряти лише угруповання означало б,
-        // що перший список не діє ні на кого, бо угруповання "stalkers"
-        // не буває ні в кого.
-        if (cfg.VirtualDevice.Factions.Find(OZ_Identity.Get().OrgOf(uid)) != -1)
-            return true;
-
-        string baseSlug = OZ_Identity.Get().BaseOf(uid);
-        if (baseSlug == "")
-            return false;
-
-        return cfg.VirtualDevice.Factions.Find(baseSlug) != -1;
-    }
+    // ТУТ ЖИЛИ VirtualAllows І VirtualFor -- дозвіл на «КПК без предмета»
+    // (D132), який читав VirtualDevice.Enabled/Pages/Factions із
+    // Profiles.json. Рішення власника 2026-09-08: вигаданого термінала
+    // немає; порожні руки не відчиняють нічого, і питати нема про що.
 }

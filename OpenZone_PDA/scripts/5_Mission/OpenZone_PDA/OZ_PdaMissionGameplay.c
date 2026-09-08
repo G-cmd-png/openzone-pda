@@ -105,10 +105,9 @@ modded class MissionGameplay
         if (what == "pda")
             OZ_PdaMenuGate.Open();
 
-        // Той самий екран без предмета за ним (D132): місія запам'ятовує це у
-        // шлюзі, і меню не закриється через порожні руки.
-        if (what == "pda_virtual")
-            OZ_PdaMenuGate.OpenVirtual();
+        // Тут стояла гілка "pda_virtual" -- екран без предмета за ним (D132).
+        // Рішення власника 2026-09-08: сервер такої команди більше не шле, і
+        // приймати її нема кому.
     }
 
     override UIScriptedMenu CreateScriptedMenu(int id)

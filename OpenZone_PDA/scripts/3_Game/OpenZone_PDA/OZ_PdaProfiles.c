@@ -187,40 +187,17 @@ class OZ_PdaProfile
     }
 }
 
-class OZ_PdaVirtualDevice
-{
-    bool              Enabled = false;
-    ref array<string> Pages;
-    ref array<string> Factions;
-
-    OZ_PdaVirtualDevice Copy()
-    {
-        OZ_PdaVirtualDevice c = new OZ_PdaVirtualDevice();
-        c.Enabled = Enabled;
-
-        int i;
-        c.Pages = new array<string>();
-        if (Pages)
-        {
-            for (i = 0; i < Pages.Count(); i++)
-                c.Pages.Insert(Pages[i]);
-        }
-
-        c.Factions = new array<string>();
-        if (Factions)
-        {
-            for (i = 0; i < Factions.Count(); i++)
-                c.Factions.Insert(Factions[i]);
-        }
-
-        return c;
-    }
-}
-
+// ТУТ БУВ КЛАС OZ_PdaVirtualDevice -- блок VirtualDevice у Profiles.json
+// (Enabled/Pages/Factions), «КПК без предмета» (D132). Рішення власника
+// 2026-09-08: вигаданого термінала немає, і конфіг про нього мовчить.
+//
+// СТАРІ ФАЙЛИ ЦЕЙ КЛЮЧ ЩЕ НЕСУТЬ, і це нормально: JsonFileLoader пропускає
+// поле, якого немає в класі, мовчки й без помилки. Прибирати його з чужих
+// Profiles.json ми не ходимо -- перший перезапис файлу (Validate щось
+// полагодив) прибере його сам.
 class OZ_PdaProfilesConfig : OZ_ConfigBase
 {
     ref array<ref OZ_PdaProfile> Profiles;
-    ref OZ_PdaVirtualDevice      VirtualDevice;
 
     override int LatestVersion()
     {
@@ -323,9 +300,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         q.PinLength         = OZ_PdaConst.PIN_LENGTH_DEFAULT;
 
         q.PresetMarkers = new array<ref OZ_MapMarker>();
-        VirtualDevice = new OZ_PdaVirtualDevice();
-        VirtualDevice.Pages    = new array<string>();
-        VirtualDevice.Factions = new array<string>();
         Profiles.Insert(q);
     }
 
@@ -375,14 +349,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
             if (Profiles[rs])
                 Profiles.Set(rs, Profiles[rs].Copy());
         }
-
-        // Віртуальний термінал -- окремий вкладений об'єкт. Його два списки
-        // Validate раніше не чіпав узагалі, а ворота OZ_PdaAccess ходять по
-        // них на кожній перевірці.
-        if (!VirtualDevice)
-            VirtualDevice = new OZ_PdaVirtualDevice();
-        else
-            VirtualDevice = VirtualDevice.Copy();
 
         // NULL-ЕЛЕМЕНТ -- ЗАКОННИЙ JSON, а ForClass розіменовує кожен запис
         // на кожну операцію кожної сторінки. Викидаємо ззаду наперед і до

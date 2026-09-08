@@ -284,8 +284,8 @@ class OZ_NewsSink : OZ_BridgeSink
         // Конверт розсилався кожному підключеному -- разом із тими, у кого
         // КПК немає взагалі: повний JSON поста в один бік на кожну зміну
         // стрічки. Той самий фільтр, що вже стоїть на живих рядках чату
-        // (OZ_ChatWho.Holders): прилад при гравці або віртуальний термінал,
-        // якому адмін дозволив цю сторінку.
+        // (OZ_ChatWho.Holders): прилад при гравці, увімкнений. Винятку для
+        // віртуального термінала немає -- рішення власника 2026-09-08.
         array<Man> players = new array<Man>();
         GetGame().GetPlayers(players);
 
@@ -300,11 +300,10 @@ class OZ_NewsSink : OZ_BridgeSink
                 continue;
 
             OZ_PDA_Base dev = OZ_PdaLookup.HeldByPlayer(pl);
-            if (!dev || !dev.OZ_IsOn())
-            {
-                if (!OZ_PdaLookup.VirtualAllows(id.GetPlainId(), OZ_PdaConst.PAGE_NEWS))
-                    continue;
-            }
+            if (!dev)
+                continue;
+            if (!dev.OZ_IsOn())
+                continue;
 
             OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, json, "");
         }

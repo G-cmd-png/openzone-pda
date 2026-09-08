@@ -863,6 +863,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // транспондер, коло глядачів і ім'я -- власника; від держателя --
         // лише координати. Без сесії власник -- сам держатель (R-B2.1c).
         // Контакти читають той самий рахунок (m_Acc) -- розбіжності немає.
+        // ПРИЛАД ТУТ Є ЗАВЖДИ. Ворота (OZ_PdaAccess.Check) біжать перед
+        // кожним обробником і без речі не пускають нікого -- рішення власника
+        // 2026-09-08 прибрало єдиний виняток, віртуальний термінал. Тому
+        // перевірок `if (pda)` нижче більше немає: вони описували стан, у
+        // якому цей код уже не буває.
         OZ_PDA_Base pda = OZ_PdaLookup.HeldBy(sender);
         string myUid = AccountOf(sender, pda);
         // Peek: рахунок приладу може належати офлайновому власнику, і Load
@@ -872,12 +877,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         OZ_MapState st = new OZ_MapState();
         st.Frozen = OZ_PdaCapsule.IsFrozen(pda);
 
-        // Де я -- знає лише прилад із GPS (ТЗ-4 R-B2.2); віртуальний термінал
-        // знає завжди, бо купувати йому нічого. Капсула живої позиції не
-        // показує (R-B1.1).
-        st.HasGps = true;
-        if (pda)
-            st.HasGps = pda.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
+        // Де я -- знає лише прилад із GPS (ТЗ-4 R-B2.2). Капсула живої
+        // позиції не показує (R-B1.1).
+        st.HasGps = pda.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
         if (mine && mine.TransponderSet)
         {
             for (int ts = 0; ts < mine.TransponderSet.Count(); ts++)
@@ -885,21 +887,18 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         }
         st.FactionsPresent = OZ_Identity.Present();
 
-        float range = 0;
-        if (pda)
-        {
-            range = AntennaRange(pda);
-            st.HasAntenna    = (range > 0);
-            st.AntennaRangeM = range;
+        float range = AntennaRange(pda);
+        st.HasAntenna    = (range > 0);
+        st.AntennaRangeM = range;
 
-            st.Markers = LoadMarkers(pda).Items;
-            st.Route   = LoadRouteOf(pda).Items;
+        st.Markers = LoadMarkers(pda).Items;
+        st.Route   = LoadRouteOf(pda).Items;
 
-            // Стеля -- ПАМ'ЯТЬ ПРИЛАДУ, а не число з профілю: гейт «є профіль»
-            // тут лишався від тих часів, коли межа міток жила в Profiles.json,
-            // і єдиним його наслідком був зайвий пошук профілю.
-            st.MarkerLimit = MarkerLimit(pda, st.Markers.Count());
-        }
+        // Стеля -- ПАМ'ЯТЬ ПРИЛАДУ, а не число з профілю: гейт «є профіль»
+        // тут лишався від тих часів, коли межа міток жила в Profiles.json,
+        // і єдиним його наслідком був зайвий пошук профілю. Тепер стеля
+        // стоїть ЗАВЖДИ -- зовнішнього `if (pda)` навколо неї більше немає.
+        st.MarkerLimit = MarkerLimit(pda, st.Markers.Count());
 
         // Без антени слухати нема чим -- і це не порожній список, а окремий
         // стан, який сторінка показує словами.
