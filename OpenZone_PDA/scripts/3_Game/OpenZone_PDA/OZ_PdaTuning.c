@@ -77,6 +77,10 @@ class OZ_PdaTuning : OZ_ConfigBase
         return s_Inst;
     }
 
+    // v2: блокування піна стало в СЕКУНДАХ (PinLockoutSeconds замість хвилин).
+    // Старе поле не переноситься: схема прожила лічені години, і значення за
+    // замовчуванням ті самі 5 хвилин -- тобто Migrate тут рівно те, що робить
+    // OZ_ConfigBase за замовчуванням, і власного перевизначення не потребує.
     override int LatestVersion()
     {
         return 2;
@@ -109,15 +113,6 @@ class OZ_PdaTuning : OZ_ConfigBase
         ToastSeconds       = 8;
         RouteAdvanceMeters = 30;
         BeaconPushSeconds  = 5;
-    }
-
-    override bool Migrate(int from)
-    {
-        // v2: блокування піна стало в СЕКУНДАХ (PinLockoutSeconds замість
-        // хвилин). Старе поле не переноситься: схема прожила лічені години,
-        // і значення за замовчуванням ті самі 5 хвилин.
-        Version = LatestVersion();
-        return true;
     }
 
     override void Validate(out int warnings)

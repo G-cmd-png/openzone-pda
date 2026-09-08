@@ -303,12 +303,6 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
         Profiles.Insert(q);
     }
 
-    override bool Migrate(int from)
-    {
-        Version = LatestVersion();
-        return true;
-    }
-
     // Один рядок про забутий ключ, і всі троє кажуть його однаково.
     private string LimitMissing(string id, string key, int fallback)
     {

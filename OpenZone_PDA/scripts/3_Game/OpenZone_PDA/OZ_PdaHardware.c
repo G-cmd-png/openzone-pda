@@ -230,12 +230,6 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         Carriers.Insert(drive);
     }
 
-    override bool Migrate(int from)
-    {
-        Version = LatestVersion();
-        return true;
-    }
-
     // Індекси-дублікати в переліку класнеймів, ЗЗАДУ НАПЕРЕД -- саме в тому
     // порядку, у якому їх можна видаляти, не зсуваючи решту.
     //
