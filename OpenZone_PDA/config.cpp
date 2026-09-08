@@ -136,9 +136,13 @@ class CfgMods
         dependencies[] = {"Game", "World", "Mission"};
         defines[] = {"OPENZONE_PDA"};
 
-        // Read by the ENGINE, not by script. Path is PBO-prefix-relative with
-        // no leading slash; lookup is case-insensitive.
-        inputs = "OpenZone_PDA/data/inputs.xml";
+        // NO `inputs=` LINE, and there will not be one.
+        //
+        // The mod used to declare UAOZPdaOpen (data/inputs.xml, default O).
+        // Owner decision 2026-09-08: the open key is gone. A device is opened
+        // by the action on the item in hands and by nothing else; a screen
+        // that a hotkey summons out of a backpack behaves like a browser tab,
+        // not like a thing in the Zone. Escape still closes it.
 
         class defs
         {

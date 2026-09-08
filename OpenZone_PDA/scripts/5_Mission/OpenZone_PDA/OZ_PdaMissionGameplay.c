@@ -47,8 +47,13 @@ modded class MissionGameplay
         // яким гра говорить про все інше.
         OZ_Notice.OnAnswer.Insert(OZ_PdaNotice);
 
+        // КЛАВІШІ ВІДКРИТТЯ БІЛЬШЕ НЕМАЄ (рішення власника 2026-09-08).
+        //
+        // Тут стояв OZ_PdaInput.Init(), а в OnUpdate -- Poll(): опитування
+        // UAOZPdaOpen щокадру. Інпут прибрано разом із data/inputs.xml, тож
+        // прив'язувати нема чого й опитувати нема кого. Екран відкриває
+        // OZ_ActionOpenPda на приладі в руках, закриває Escape.
         OZ_PdaMenuGate.Bind(new OZ_PdaMenuOpener());
-        OZ_PdaInput.Init();
 
         // Числа худу з пакета ядра (D87) -- на кожен пакет, перший чи
         // повторний; і одразу, якщо пакет випередив місію.
@@ -65,7 +70,6 @@ modded class MissionGameplay
     override void OnUpdate(float timeslice)
     {
         super.OnUpdate(timeslice);
-        OZ_PdaInput.Poll();
         OZ_PdaHud.Update(timeslice);
     }
 
