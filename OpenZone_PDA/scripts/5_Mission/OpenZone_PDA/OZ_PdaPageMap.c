@@ -154,6 +154,18 @@ class OZ_PdaPageMap : OZ_PdaPage
         // Відмова на дію, якої гравець уже не пам'ятає, ні до чого:
         // вкладку перемкнули -- тримати підказку більше нема сенсу.
         ClearHintHold();
+
+        // ФОКУС ЗНІМАЄМО, І ЦЕ НЕ КОСМЕТИКА.
+        //
+        // Рушій сам дає фокус першому багаторядковому полю при побудові
+        // (зміряно на живому клієнті, той самий факт тримає OZ_PdaPageNotes):
+        // тут це MarkerDesc. Поле з фокусом забирає клавіатуру собі, і до
+        // OnKeyPress меню Escape уже не доходить -- саме тому КПК на цій
+        // сторінці не закривався клавішею (звіт власника 2026-09-09, дефект 4).
+        // Вихід із меню тепер тримає ще й опит UAUIBack в OZ_PdaMenu.Update,
+        // а цей рядок прибирає ще й червону рамку фокуса на порожньому полі.
+        SetFocus(null);
+
         Request();
     }
 
@@ -502,7 +514,14 @@ class OZ_PdaPageMap : OZ_PdaPage
     }
 
     // Обрати мітку (або зняти вибір порожнім id): підсвітити на карті й у
-    // списку, заповнити поля редагування, показати карті ДЕ вона.
+    // списку, заповнити поля редагування.
+    //
+    // КАРТУ ЦЕ БІЛЬШЕ НЕ РУХАЄ (звіт власника 2026-09-09, дефект 1). Тут
+    // стояв SetMapPos на позицію обраної мітки, і через нього КОЖЕН клік
+    // по мітці сіпав карту з-під пальця: мітки здебільшого стоять там, де
+    // гравець стояв, тож збоку це виглядало як «карта весь час вертається
+    // на мене». Карта лишається там, куди її поставив гравець; повернути її
+    // до себе -- окрема кнопка (BtnCenter), і лише вона.
     private void Pick(string id)
     {
         m_PickedId = id;
@@ -514,8 +533,6 @@ class OZ_PdaPageMap : OZ_PdaPage
                 m_EditName.SetText(m.Name);
             if (m_EditDesc)
                 m_EditDesc.SetText(m.Desc);
-            if (m_Map)
-                m_Map.SetMapPos(m.Pos.ToVector());
         }
         else
         {
@@ -787,8 +804,14 @@ class OZ_PdaPageMap : OZ_PdaPage
             SetText("BtnMarkText", "#STR_OZ_MAP_MARK");
     }
 
+    // «До мене» -- єдине місце, яке має право рухати карту після відкриття.
+    // Без GPS приладу нема куди вести: він не знає, де він (ТЗ-4 R-B2.2),
+    // і кнопка на цей час схована (див. Paint).
     private void CentreOnSelf()
     {
+        if (!GpsKnows())
+            return;
+
         string selfPos = LocalSelfPos();
         if (!m_Map || selfPos == "")
             return;
@@ -925,10 +948,14 @@ class OZ_PdaPageMap : OZ_PdaPage
                 OZ_MapMarker m = m_State.Markers[k];
 
                 // Обрана мітка світиться -- інакше після кліку не видно, яку
-                // саме зараз видалить кнопка.
+                // саме зараз видалить кнопка. Колір ОКРЕМИЙ (MARK_PICK), а не
+                // MARK_SELF: тим самим помаранчевим намальовано «ти тут», і
+                // обрана мітка зливалася з ним у ту саму пляму (звіт власника
+                // 2026-09-09, дефект 6). MARK_PICK -- це $accent із токенів,
+                // той самий колір, яким підсвічений рядок у списку.
                 int colour = OZ_PdaConst.MARK_PLAIN;
                 if (m.Id == m_PickedId)
-                    colour = OZ_PdaConst.MARK_SELF;
+                    colour = OZ_PdaConst.MARK_PICK;
 
                 m_Map.AddUserMark(m.Pos.ToVector(), m.Name, colour, ICON_MARK);
             }
@@ -941,18 +968,72 @@ class OZ_PdaPageMap : OZ_PdaPage
             }
 
             // Перше відкриття -- показуємо гравцеві, де він. Далі карта
-            // лишається там, куди її поставив він сам.
-            if (!m_Centred && selfPos != "")
+            // лишається там, куди її поставив він сам, і жодне перемальовування
+            // її не рухає: центрування ОДНОРАЗОВЕ.
+            //
+            // Без GPS показувати нема чого: прилад не знає, де він (ТЗ-4
+            // R-B2.2), і відкрити карту рівно на гравцеві означало б сказати
+            // йому те, чого прилад не знає. Тоді якорем стає ПЕРША мітка --
+            // місце, яке гравець позначив сам, коли ще міг; міток немає --
+            // карту не рухаємо взагалі.
+            if (!m_Centred)
             {
-                m_Centred = true;
-                m_Map.SetMapPos(selfPos.ToVector());
-                m_Map.SetScale(0.35);
+                string centreAt = "";
+                if (GpsKnows())
+                    centreAt = selfPos;
+                else if (m_State.Markers && m_State.Markers.Count() > 0)
+                    centreAt = m_State.Markers[0].Pos;
+
+                if (centreAt != "")
+                {
+                    m_Centred = true;
+                    m_Map.SetMapPos(centreAt.ToVector());
+                    m_Map.SetScale(0.35);
+                }
             }
         }
+
+        PaintTransponder();
+
+        // «До мене» без GPS нікуди не веде -- ховаємо разом із транспондером.
+        if (m_BtnCenter)
+            m_BtnCenter.Show(GpsKnows());
 
         PaintMarkButton();
         RebuildRows(false);
         SetHint("MapHint", Hint());
+    }
+
+    // ВОРОТА ТРАНСПОНДЕРА НА ЕКРАНІ -- ТІ САМІ, ЩО НА СЕРВЕРІ (ТЗ-4 R-A2.4).
+    //
+    // Окремого «модуля транспондера» в моді немає й ніколи не було: передає
+    // АНТЕНА (`Kind "antenna"`), а ступінь 4 воріт додала до неї GPS -- прилад,
+    // який не знає, де він, не може сказати цього нікому (R-A2.5). Кнопка ж
+    // стояла безумовно: гравець без антени (чи без GPS) крутив режими, сервер
+    // їх слухняно записував, а маячка не було й бути не могло -- звіт власника
+    // 2026-09-09, дефект 3.
+    //
+    // Ховаємо, а не гасимо написом: причина вже сказана словом у смузі підказки
+    // (STR_OZ_MAP_NO_ANTENNA, STR_OZ_MAP_NO_GPS), і другий раз про те саме
+    // кнопка мовчати не мусить.
+    private void PaintTransponder()
+    {
+        if (!m_BtnMode)
+            return;
+
+        // По одній умові на рядок: `x = a && b` у Enforce ненадійне, а `if (a ||`
+        // з переносом парсер відкидає взагалі.
+        bool can = true;
+        if (!m_State)
+            can = false;
+        else if (m_State.Frozen)
+            can = false;
+        else if (!m_State.HasAntenna)
+            can = false;
+        else if (!m_State.HasGps)
+            can = false;
+
+        m_BtnMode.Show(can);
     }
 
     // Три різні «нікого не видно», і гравець мусить розрізняти їх:
