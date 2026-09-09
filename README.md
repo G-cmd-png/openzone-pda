@@ -2,7 +2,7 @@
 
 A S.T.A.L.K.E.R.-style PDA for DayZ. One device you carry that holds the map, your
 faction, your contacts, your notes and your conversations — and takes modules that
-give it a Geiger counter, a dosimeter, an antenna, or a radio from another mod.
+give it a Geiger counter, a dosimeter, a GPS receiver, or a radio from another mod.
 
 Built on [OpenZone Core](https://github.com/covalschi/openzone-core). Designed to run
 on **any server and any map**, configured entirely from JSON.
@@ -49,12 +49,33 @@ admin console panel in the VPP window, tiered battery drain (the profile's own
 consumption per minute times the power factor of every board that works), and the
 hardware contract that lets another mod add its own module, tab and page.
 
-Built but not yet connected, so honestly: module behaviours beyond the spy antenna
+Built but not yet connected, so honestly: module behaviours beyond the spy plate
 (the Geiger counter and dosimeter read "no data" until a mod supplies a radiation
 provider) and the quest journal (it draws, and waits for a quest mod to fill it).
 Discord account linking lives in OpenZone Core and works; the
 PDA only shows whether the account is linked. The list under **Planned features**
 describes where this is going, not what it does today.
+
+## Configuration
+
+Everything an admin turns lives under `$profile:OpenZone\` and is written back
+whenever the mod had to repair it.
+
+- **`OZ_PDA_Profiles.json`** — one entry per PDA classname: its pages, its bays,
+  its marker and memory limits, its power draw, its PIN length.
+- **`OZ_PDA_Hardware.json`** — the modules and data carriers the device accepts.
+  A module entry is a classname, a `Kind` (`gps`, `radiometer`, `dosimeter`,
+  `decryptor`, `spy`, or a word another mod brought), a `PowerFactor`, and
+  `RangeM`. `RangeM` belongs to the **GPS** entry: the GPS receiver is also the
+  transponder, so the range it declares is how far the device hears other
+  beacons and is heard by them. Left at zero, it becomes 5000 m.
+- **`OZ_PDA_Tuning.json`** — the numbers: text limits, PIN thresholds, radii,
+  seconds. One of them is not a number:
+  - **`MapHome`** — `"x z"`, where the map opens on a device with no GPS. A PDA
+    without a GPS receiver does not know where it is, so the map cannot open on
+    the player; it opens here instead, the same place every time. Left empty, it
+    becomes the centre of the world the server is running (7680 7680 on
+    Chernarus), and the file is rewritten with that point so it can be edited.
 
 ## Licence
 
