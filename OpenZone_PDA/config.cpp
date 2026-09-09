@@ -8,13 +8,13 @@
 //
 //   POWER    a battery. Vanilla slot; the engine plugs the device into it.
 //   STORAGE  a data carrier. Its own slot: that is content, not capability.
-//   MODULES  GPS, radiometer, dosimeter, and whatever other mods bring.
-//            They share a LIMITED number of bays.
+//   MODULES  GPS (with the transponder), the spy module, the decryptor, and
+//            whatever other mods bring. They share a LIMITED number of bays.
 //
 // The bay count is the tier lever. A rookie PDA has one and its owner chooses
-// between the GPS with its transponder and a Geiger counter; a Duty PDA has
-// three and carries all of it. A device with a slot per device type would
-// offer no choice at all.
+// which single board to carry; a Duty PDA has three and carries all of it. A
+// device with a slot per device type would offer no choice at all. (The
+// radiometer and the dosimeter were removed by the owner on 2026-09-09.)
 //
 // What fits a bay, and what it does, is a table of classnames in JSON -- so a
 // module can come from any mod, and an admin can point the PDA at an item we
