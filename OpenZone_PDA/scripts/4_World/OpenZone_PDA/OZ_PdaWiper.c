@@ -40,9 +40,14 @@ class OZ_PdaWiper : OZ_Wiper
             d.NpcContacts.Clear();
 
         // Поля ТЗ-4 §A скидаються пермадесом (R-A1.3, R-A3): нове життя не
-        // успадковує ані мовчання, ані маячка старого.
-        if (d.TransponderSet)
-            d.TransponderSet.Clear();
+        // успадковує ані мовчання, ані маячка старого. Скидання -- це
+        // ПОСТАВОЧНЕ коло глядачів, а не порожній набір: вимикача більше
+        // немає (рішення власника 2026-09-09), і порожнеча означала б стан,
+        // якого прилад не вміє показати.
+        if (!d.TransponderSet)
+            d.TransponderSet = new array<string>();
+        d.TransponderSet.Clear();
+        d.TransponderSet.Insert(OZ_PdaConst.TRANS_DEFAULT);
         d.HiddenFromZone     = false;
         d.HiddenFromContacts = false;
 

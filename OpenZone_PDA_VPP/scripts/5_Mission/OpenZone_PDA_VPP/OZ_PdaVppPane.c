@@ -291,13 +291,20 @@ modded class OZ_VppAdminMenu
         // Носій виду не має ЗОВСІМ -- на ньому лежить стільки родів, скільки
         // на нього записали, і SaveHwForm поле для нього не читає. Слово
         // "markers" тут було залишком старої моделі й брехало адмінові.
+        // Вид ПІДКАЗУЄМО, а не вгадуємо: порожнє поле Validate зустріне
+        // скаргою «модуль причепиться й не робитиме нічого», а вписати сюди
+        // "gps" означало б підштовхнути адміна до другого приймача. Слова
+        // "antenna" тут більше немає -- цього виду не існує з 2026-09-09.
         if (kind == "module")
-            SetEdit("HwKind", "antenna");
+            SetEdit("HwKind", OZ_PdaConst.MOD_RADIOMETER);
         else
             SetEdit("HwKind", "");
         m_HwWritable = true;
         PaintHwToggles();
-        Hint("new " + kind + ": classname is the key, then SAVE");
+        if (kind == "module")
+            Hint("new module: classname is the key, Kind is gps/radiometer/dosimeter/decryptor/spy or a foreign one, then SAVE");
+        else
+            Hint("new " + kind + ": classname is the key, then SAVE");
     }
 
     private void PaintHwToggles()

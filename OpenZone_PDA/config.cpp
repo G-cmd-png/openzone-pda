@@ -8,13 +8,13 @@
 //
 //   POWER    a battery. Vanilla slot; the engine plugs the device into it.
 //   STORAGE  a data carrier. Its own slot: that is content, not capability.
-//   MODULES  antenna, radiometer, dosimeter, and whatever other mods bring.
+//   MODULES  GPS, radiometer, dosimeter, and whatever other mods bring.
 //            They share a LIMITED number of bays.
 //
 // The bay count is the tier lever. A rookie PDA has one and its owner chooses
-// between long-range comms and a Geiger counter; a Duty PDA has three and
-// carries all of it. A device with a slot per device type would offer no
-// choice at all.
+// between the GPS with its transponder and a Geiger counter; a Duty PDA has
+// three and carries all of it. A device with a slot per device type would
+// offer no choice at all.
 //
 // What fits a bay, and what it does, is a table of classnames in JSON -- so a
 // module can come from any mod, and an admin can point the PDA at an item we
@@ -74,10 +74,14 @@ class CfgPatches
 {
     class OpenZone_PDA
     {
-        // Every scope=2 class belongs here. The three that used to be missing
-        // -- OZ_PDA_Sealed, OZ_Module_Antenna, OZ_Module_Decryptor -- were
-        // between them the whole sealed-device feature: the quest PDA and the
-        // tool that opens it.
+        // Every scope=2 class belongs here. Two that used to be missing --
+        // OZ_PDA_Sealed and OZ_Module_Decryptor -- were between them the whole
+        // sealed-device feature: the quest PDA and the tool that opens it.
+        //
+        // OZ_Module_Antenna is gone (owner decision 2026-09-09): the antenna
+        // and the GPS were one module split in two, and the GPS is the one
+        // that stayed. Devices that hold a persisted antenna plate lose it
+        // with the class.
         units[] =
         {
             "OZ_PDA_Novice",
@@ -88,7 +92,6 @@ class CfgPatches
             "OZ_DataCarrier_Drive",
             "OZ_Module_Radiometer",
             "OZ_Module_Dosimeter",
-            "OZ_Module_Antenna",
             "OZ_Module_SpyAntenna",
             "OZ_Module_Decryptor",
             "OZ_Module_GPS"
@@ -337,18 +340,12 @@ class CfgVehicles
         descriptionShort = "$STR_OZ_MOD_DOSIMETER_DESC";
     };
 
-    // Short-range antenna. Both halves of the transponder need one: it is
-    // what lets the device be seen and what lets it see. Longer-range ones
-    // come from OpenZone Radio and simply declare a larger RangeM.
-    class OZ_Module_Antenna : OZ_Module_Base
-    {
-        scope = 2;
-        displayName = "$STR_OZ_MOD_ANTENNA";
-        descriptionShort = "$STR_OZ_MOD_ANTENNA_DESC";
-    };
-
-    // GPS receiver: the device learns where it is. Without it the map still
-    // shows marks and routes, but no "you" and no distances (TZ-4 R-B2.2).
+    // GPS receiver, and the transponder with it (owner decision 2026-09-09).
+    // Without it the map still shows marks and routes, but no "you", no
+    // distances and no beacons (TZ-4 R-B2.2): a device that does not know
+    // where it is cannot tell anyone. Its Hardware.json entry carries the
+    // transponder range; longer-range towers come from OpenZone Radio and
+    // simply declare a larger RangeM.
     class OZ_Module_GPS : OZ_Module_Base
     {
         scope = 2;

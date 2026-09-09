@@ -4,7 +4,7 @@
 //
 //   ЖИВЛЕННЯ   -- батарея. Слот ванільний, рушій сам втикає в неї пристрій.
 //   СХОВИЩЕ    -- носій даних. Свій слот: це вміст, а не здатність.
-//   МОДУЛІ     -- антена, радіометр, дозиметр і що завгодно від інших модів.
+//   МОДУЛІ     -- GPS, радіометр, дозиметр і що завгодно від інших модів.
 //                 Ділять ОБМЕЖЕНЕ число відсіків.
 //
 // Відсіків обмежено навмисно: це головний важіль тиру. У ПДА новачка один, у
@@ -32,10 +32,15 @@ class OZ_ModuleSpec
     // Що це за прилад. Рядком, а не числом: мод-постачальник не мусить знати
     // наших констант, а адмін бачить у JSON слово, а не код.
     //
-    //   "antenna"     -- вмикає далекий зв'язок, дає радіус
+    //   "gps"         -- прилад знає, де він, і веде транспондер; дає радіус
     //   "radiometer"  -- лічильник Гейгера: зовнішнє поле тут і зараз
     //   "dosimeter"   -- ін'єкційний: накопичена доза в тілі
+    //   "spy"         -- шпигунське око на чужі транспондери, на лічені хвилини
     //   будь-що інше  -- чужий модуль, КПК просто вмикає його сторінки
+    //
+    // ВИДУ "antenna" БІЛЬШЕ НЕМАЄ: рішення власника 2026-09-09 злило антену
+    // з GPS в один модуль. Запис зі старим словом лишається у файлі, але не
+    // означає нічого -- Validate каже про це вголос.
     string Kind = "";
 
     // ШПИГУНСЬКИЙ транспондер: скільки хвилин активної роботи в платі.
@@ -43,8 +48,10 @@ class OZ_ModuleSpec
     // дешифратор: одноразова розкіш, не вічне око.
     float SpyMinutes = 0;
 
-    // Радіус упевненого прийому в метрах. Має сенс лише для "antenna".
-    // Нуль означає «покриття задає щось інше» -- наприклад стаціонарна вежа.
+    // Радіус упевненого прийому транспондера в метрах. Має сенс лише для
+    // "gps": прилад, який не знає, де він, не має чого вести. Нуль у записі
+    // GPS Validate замінює поставочним OZ_PdaConst.GPS_RANGE_DEFAULT --
+    // причина в коментарі при тій константі.
     float RangeM = 0;
 
     // У СКІЛЬКИ РАЗІВ ця плата піднімає витрату живлення приладу
@@ -156,42 +163,36 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         dose.EnablesPages = new array<string>();
         Modules.Insert(dose);
 
-        // Базова антена ЙДЕ З КПК, а не з мода рації. Транспондер -- функція
-        // самого пристрою, і ставити його в залежність від ще не написаного
-        // мода означало б віддати КПК без того, заради чого його носять.
+        // GPS -- ОДИН МОДУЛЬ НА ДВІ КОЛИШНІ ПЛАТИ (рішення власника
+        // 2026-09-09). Без нього прилад НЕ ЗНАЄ, де він (ТЗ-4 R-B2.2): мітки
+        // й маршрут працюють, а «ти тут», відстані й транспондер -- ні. Окрема
+        // «антена» тут була другою половиною тієї самої вимоги: без неї
+        // прилад теж не вів нічого, отже вибору між ними не було, а відсік
+        // з'їдали два.
         //
-        // Далекі антени й вежі приносить OpenZone Radio; вони просто мають
-        // більший RangeM і перекривають цю.
-        OZ_ModuleSpec ant = new OZ_ModuleSpec();
-        ant.ClassName    = "OZ_Module_Antenna";
-        ant.DisplayName  = "#STR_OZ_MOD_ANTENNA";
-        ant.Kind         = "antenna";
-        ant.RangeM       = 500;
-        // Передавач їсть більше за будь-який датчик, і це має бути видно по
-        // батареї.
-        ant.PowerFactor  = 1.6;
-        ant.EnablesPages = new array<string>();
-        Modules.Insert(ant);
-
-        // GPS. Без нього прилад НЕ ЗНАЄ, де він (ТЗ-4 R-B2.2): мітки й маршрут
-        // працюють, а «ти тут» і відстані -- ні. Окремий модуль через той самий
-        // договір, що й решта (R-B2.3), а не окремий механізм.
+        // Транспондер -- функція самого пристрою, і ставити його в залежність
+        // від мода рації означало б віддати КПК без того, заради чого його
+        // носять. Далекі вежі приносить OpenZone Radio; вони просто мають
+        // більший RangeM.
         OZ_ModuleSpec gps = new OZ_ModuleSpec();
         gps.ClassName    = "OZ_Module_GPS";
         gps.DisplayName  = "#STR_OZ_MOD_GPS";
-        gps.Kind         = "gps";
-        gps.PowerFactor  = 1.2;
+        gps.Kind         = OZ_PdaConst.MOD_GPS;
+        gps.RangeM       = OZ_PdaConst.GPS_RANGE_DEFAULT;
+        // Приймач плюс передавач їдять більше за будь-який датчик, і це має
+        // бути видно по батареї.
+        gps.PowerFactor  = 1.6;
         gps.EnablesPages = new array<string>();
         Modules.Insert(gps);
 
-        // Шпигунська антена ЗАПИСАНА в залізі (ТЗ-4 R-F4.1): предмет спавнився,
-        // а запису не мав -- і з коробки не робив нічого. Антена як антена,
-        // плюс лічені хвилини ока на всіх (SpyMinutes), потім плата згорає.
+        // Шпигунська плата ЗАПИСАНА в залізі (ТЗ-4 R-F4.1): предмет спавнився,
+        // а запису не мав -- і з коробки не робив нічого. Свій вид, а не
+        // чужий: дальності вона не дає й не потребує, а робить одне -- лічені
+        // хвилини ока на всіх (SpyMinutes), потім плата згорає.
         OZ_ModuleSpec spy = new OZ_ModuleSpec();
         spy.ClassName    = "OZ_Module_SpyAntenna";
         spy.DisplayName  = "#STR_OZ_MOD_SPY";
-        spy.Kind         = "antenna";
-        spy.RangeM       = 500;
+        spy.Kind         = OZ_PdaConst.MOD_SPY;
         spy.SpyMinutes   = 60;
         spy.PowerFactor  = 2.0;
         spy.EnablesPages = new array<string>();
@@ -325,6 +326,10 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             warnings++;
         }
 
+        // Локальна копія числа: ToString() кличемо на змінній, а не на
+        // виразі доступу до статичної константи.
+        float gpsRange = OZ_PdaConst.GPS_RANGE_DEFAULT;
+
         for (int i = 0; i < Modules.Count(); i++)
         {
             OZ_ModuleSpec m = Modules[i];
@@ -341,10 +346,38 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             if (m.Kind == "")
                 OZ_Log.Warn("module \"" + m.ClassName + "\" has no Kind - it will attach but do nothing");
 
+            // НАША шпигунська плата дістає СВІЙ вид (рішення власника
+            // 2026-09-09). Ремонт по класнейму, а не по виду взагалі: сам
+            // клас наш, ми знаємо, чим він мусить бути, а чужа плата з
+            // будь-яким видом лишається такою, якою її оголосили.
+            if (m.ClassName == "OZ_Module_SpyAntenna" && m.Kind != OZ_PdaConst.MOD_SPY)
+            {
+                OZ_Log.Warn("module \"" + m.ClassName + "\" had Kind \"" + m.Kind + "\", the spy plate now has its own kind - set to \"" + OZ_PdaConst.MOD_SPY + "\"");
+                m.Kind = OZ_PdaConst.MOD_SPY;
+                warnings++;
+            }
+
+            // ВИД "antenna" МЕРТВИЙ, і мовчати про це не можна: запис із ним
+            // лишається у файлі, виглядає робочим і не робить нічого. Скарга
+            // БЕЗ ПОЧИНКИ (див. шапку Validate): що робити з чужим записом --
+            // вирішує адмін, а не ми за нього.
+            if (m.Kind == "antenna")
+                OZ_Log.Warn("module \"" + m.ClassName + "\" has Kind \"antenna\", which no longer exists - the transponder range comes from the GPS module now, and this entry does nothing");
+
             if (m.RangeM < 0)
             {
                 OZ_Log.Warn("module \"" + m.ClassName + "\" has a negative RangeM, clamped to 0");
                 m.RangeM = 0;
+                warnings++;
+            }
+
+            // ДАЛЬНІСТЬ GPS БЕЗ ЧИСЛА -- це забутий ключ, а не «нікому не
+            // чути»: після Copy() відсутнє поле читається нулем. Та сама
+            // пастка, що в PowerFactor нижче, і те саме лікування.
+            if (m.Kind == OZ_PdaConst.MOD_GPS && m.RangeM <= 0)
+            {
+                OZ_Log.Warn("module \"" + m.ClassName + "\" has no usable RangeM for a GPS, set to " + gpsRange.ToString());
+                m.RangeM = gpsRange;
                 warnings++;
             }
 

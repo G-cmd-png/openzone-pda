@@ -2,15 +2,55 @@
 //
 // КАРТА Й ТРАНСПОНДЕР -- РІЗНІ РЕЧІ, і залізо в них різне:
 //
-//   карту показує будь-який КПК -- це просто карта, і антена їй не потрібна;
-//   маячки (свій і чужі) потребують АНТЕНИ, і в обидва боки однаково.
+//   карту показує будь-який КПК -- це просто карта, і GPS їй не потрібен;
+//   маячки (свій і чужі) потребують GPS, і в обидва боки однаково.
 //
-// Без антени сторінка чесно каже, що приймача немає, а не малює порожню карту
-// з виглядом «нікого немає». Це різні відповіді, і плутати їх не можна.
+// Без GPS сторінка чесно каже, що прилад не знає, де він, а не малює порожню
+// карту з виглядом «нікого немає». Це різні відповіді, і плутати їх не можна.
 //
-// Радіус дає сам модуль антени (RangeM). Нуль означає «покриття задає щось
-// інше» -- наприклад стаціонарна вежа з мода рації; тоді маячків не буде
-// доти, доки те інше не з'явиться.
+// Радіус дає запис GPS у Hardware.json (RangeM) -- рішення власника
+// 2026-09-09 злило антену з приймачем в один модуль. Нуль означає «покриття
+// задає щось інше» -- наприклад стаціонарна вежа з мода рації; тоді маячків
+// не буде доти, доки те інше не з'явиться.
+
+// РЕМОНТ ЗБЕРЕЖЕНОГО «ВИМКНЕНО».
+//
+// Вимикача транспондера більше немає (рішення власника 2026-09-09): прилад
+// веде завжди, коли він увімкнений і має GPS, а гравець обирає лише коло
+// глядачів. У файлах гравців, однак, лежить порожній набір -- те саме
+// «вимкнено», яке вони колись обрали, -- і мовчазне «порожньо означає
+// нікому» лишило б їх невидимими назавжди.
+//
+// Це РЕМОНТ, а не міграція: він залежить від стану файла, а не від його
+// версії, і йде на кожному читанні, поки набір порожній. Окремого файла
+// міграцій у серії немає й не буде (рішення власника 2026-09-08).
+class OZ_PdaAudience
+{
+    // true -- запис змінився, і його треба зробити брудним.
+    static bool Repair(OZ_PlayerData d)
+    {
+        if (!d)
+            return false;
+
+        if (!d.TransponderSet)
+            d.TransponderSet = new array<string>();
+
+        if (d.TransponderSet.Count() > 0)
+            return false;
+
+        d.TransponderSet.Insert(OZ_PdaConst.TRANS_DEFAULT);
+        OZ_Log.Info("player " + d.SteamId + ": stored transponder OFF is gone - audience set to \"" + OZ_PdaConst.TRANS_DEFAULT + "\"");
+        return true;
+    }
+
+    // Ремонт плюс позначка. Один рядок на місці виклику -- і жодного шансу
+    // полагодити запис у пам'яті й забути сказати про це сховищу.
+    static void Fix(OZ_PlayerData d, string uid)
+    {
+        if (Repair(d))
+            OZ_PlayerStore.MarkDirty(uid);
+    }
+}
 
 // Пуш маячків: список плюс два клієнтські числа з Tuning.json -- окремий
 // канал для них був би дорожчий за два поля в конверті, який і так їде.
@@ -48,7 +88,7 @@ class OZ_BeaconPush
 
 class OZ_PdaHandlerMap : OZ_PageHandler
 {
-    // Один живий обробник: пуш маячків іде через нього, бо антену, шпигунську
+    // Один живий обробник: пуш маячків іде через нього, бо GPS, шпигунську
     // плату й приватність рахує саме цей код.
     private static OZ_PdaHandlerMap s_Inst;
 
@@ -60,6 +100,13 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // Що кому пішло минулого разу: порожньому за порожнім не шлемо.
     private ref map<string, string> m_BeaconSig = new map<string, string>();
 
+    // ЩО ВІДПОВІЛА ДРАБИНА МАЯЧКІВ минулого разу -- лише щоб не писати про це
+    // в лог кожні п'ять секунд на кожного в онлайні. Драбина (ТЗ-4
+    // R-A2.1--R-A2.4) мовчазна за задумом: гравець, який не бачить нікого,
+    // не має способу дізнатись, на якій саме сходинці його прилад спинився.
+    // Рядок при ЗМІНІ відповіді дає адмінові рівно це, і нічого понад те.
+    private ref map<string, string> m_LadderSig = new map<string, string>();
+
     static void PushBeacons()
     {
         if (s_Inst)
@@ -69,8 +116,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // Забути підпис гравця, який вийшов. Кличе OZ_PdaModule з дисконекту.
     static void ForgetBeacons(string uid)
     {
-        if (s_Inst)
-            s_Inst.m_BeaconSig.Remove(uid);
+        if (!s_Inst)
+            return;
+        s_Inst.m_BeaconSig.Remove(uid);
+        s_Inst.m_LadderSig.Remove(uid);
     }
 
     private void PushBeaconsNow()
@@ -109,15 +158,43 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
             array<ref OZ_MapBeacon> found = new array<ref OZ_MapBeacon>();
 
-            if (pda && pda.OZ_IsOn() && pda.OZ_IsUnlocked() && !OZ_PdaCapsule.IsFrozen(pda))
+            // ДРАБИНА СХОДИНКА ЗА СХОДИНКОЮ, а не однією умовою: кожен
+            // вкладений `if` -- це наступний ступінь ТЗ-4 R-A2, і рядок
+            // ladder називає той, на якому прилад спинився.
+            string ladder = "no device";
+            if (pda)
             {
-                float range = AntennaRange(pda);
-                if (range > 0)
+                ladder = "off";
+                if (pda.OZ_IsOn())
                 {
-                    FillBeacons(id, pl, pda, range, found);
-                    for (int b = 0; b < found.Count(); b++)
-                        sig += found[b].Name + "|" + found[b].Pos + ";";
+                    ladder = "locked";
+                    if (pda.OZ_IsUnlocked())
+                    {
+                        ladder = "capsule";
+                        if (!OZ_PdaCapsule.IsFrozen(pda))
+                        {
+                            float range = TransponderRange(pda);
+                            ladder = "no gps";
+                            if (range > 0)
+                            {
+                                int rm = Math.Round(range);
+                                ladder = "on, gps range " + rm.ToString() + " m";
+                                FillBeacons(id, pl, pda, range, found);
+                                for (int b = 0; b < found.Count(); b++)
+                                    sig += found[b].Name + "|" + found[b].Pos + ";";
+                            }
+                        }
+                    }
                 }
+            }
+
+            string lastLadder;
+            if (!m_LadderSig.Find(uid, lastLadder))
+                lastLadder = "";
+            if (ladder != lastLadder)
+            {
+                m_LadderSig.Set(uid, ladder);
+                OZ_Log.Dbg("pda: beacon ladder for " + uid + ": " + ladder);
             }
 
             // ТОЙ САМИЙ СПИСОК -- НЕ ШЛЕМО.
@@ -126,7 +203,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             // єдиний випадок, коли посилати справді нема чого. Список, що не
             // змінився -- а він не змінюється, поки ніхто нікуди не пішов, --
             // їхав повним конвертом кожні п'ять секунд кожному власникові
-            // антени. Порівняння підписів накриває обидва випадки.
+            // GPS. Порівняння підписів накриває обидва випадки.
             string last;
             if (!m_BeaconSig.Find(uid, last))
                 last = "";
@@ -135,9 +212,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             m_BeaconSig.Set(uid, sig);
 
             // Конверт будуємо ЛИШЕ коли є що слати: гравець без працюючої
-            // антени й гравець із незмінним списком не коштують тут жодної
+            // GPS і гравець із незмінним списком не коштують тут жодної
             // алокації. Раніше OZ_BeaconPush створювався для КОЖНОГО в
-            // онлайні на кожному тіку, ще до перевірки антени.
+            // онлайні на кожному тіку, ще до перевірки заліза.
             OZ_BeaconPush push = new OZ_BeaconPush();
             push.Beacons = found;
 
@@ -880,6 +957,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // Де я -- знає лише прилад із GPS (ТЗ-4 R-B2.2). Капсула живої
         // позиції не показує (R-B1.1).
         st.HasGps = pda.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
+
+        // Збережене «вимкнено» лікуємо ТУТ, перш ніж показати гравцеві:
+        // інакше кнопка кола глядачів написала б йому слово, якого більше
+        // немає в переліку.
+        OZ_PdaAudience.Fix(mine, myUid);
         if (mine && mine.TransponderSet)
         {
             for (int ts = 0; ts < mine.TransponderSet.Count(); ts++)
@@ -887,9 +969,12 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         }
         st.FactionsPresent = OZ_Identity.Present();
 
-        float range = AntennaRange(pda);
-        st.HasAntenna    = (range > 0);
-        st.AntennaRangeM = range;
+        // Домівка мапи -- адмінська, отже СЕРВЕРНА: клієнтський OZ_PdaTuning
+        // знає лише поставочні числа й Tuning.json не читає ніколи.
+        st.MapHome = OZ_PdaTune.MapHome();
+
+        float range = TransponderRange(pda);
+        st.TransponderRangeM = range;
 
         st.Markers = LoadMarkers(pda).Items;
         st.Route   = LoadRouteOf(pda).Items;
@@ -900,9 +985,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // стоїть ЗАВЖДИ -- зовнішнього `if (pda)` навколо неї більше немає.
         st.MarkerLimit = MarkerLimit(pda, st.Markers.Count());
 
-        // Без антени слухати нема чим -- і це не порожній список, а окремий
+        // Без GPS слухати нема чим -- і це не порожній список, а окремий
         // стан, який сторінка показує словами.
-        if (!st.HasAntenna)
+        if (range <= 0)
         {
             return Serialise(st, ok, error);
         }
@@ -915,7 +1000,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     }
 
     // Маячки для ОДНОГО глядача. Спільна для відповіді сторінки і серверного
-    // пуша: антена, шпигунська плата і приватність рахуються однаково.
+    // пуша: GPS, шпигунська плата і приватність рахуються однаково.
     private void FillBeacons(PlayerIdentity sender, PlayerBase me, OZ_PDA_Base pda, float range, array<ref OZ_MapBeacon> outBeacons)
     {
         // Глядач -- рахунок власника сесії (R-B2.1d): прилад показує те, що
@@ -924,7 +1009,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         string myUid = AccountOf(sender, pda);
         // КЛЮЧ ГЛЯДАЧА -- РАЗ НА ВИКЛИК, а не на кожного сусіда. KeyOf читає
         // запис гравця й склеює рядок; Broadcasts кликав його всередині циклу,
-        // тобто по разу на кожного, хто стоїть у радіусі антени, п'ять разів
+        // тобто по разу на кожного, хто стоїть у радіусі приймача, п'ять разів
         // на секунду на весь онлайн.
         string myKey = OZ_PlayerStore.KeyOf(myUid);
 
@@ -937,9 +1022,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         array<Man> near = new array<Man>();
         OZ_Spatial.PlayersInRadius(me.GetWorldPosition(), range, near);
 
-        // ШПИГУНСЬКА плата ламає приватність: бачить усіх, у кого
-        // транспондер узагалі не "off". Ціна -- лічені хвилини ресурсу,
-        // який плата списує сама (OZ_SpyAntennaBehaviour).
+        // ШПИГУНСЬКА плата ламає приватність: бачить кожного, чий прилад
+        // веде, хоч би яке коло глядачів той обрав. Ціна -- лічені хвилини
+        // ресурсу, який плата списує сама (OZ_SpyAntennaBehaviour).
         bool spyEye = SpyActive(pda);
 
         for (int i = 0; i < near.Count(); i++)
@@ -970,6 +1055,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             // Peek: власник сесії чужого приладу може бути офлайн -- саме
             // так і виглядає вкрадений живий термінал.
             OZ_PlayerData od = OZ_PlayerStore.Peek(ownerUid);
+            // Ремонт збереженого «вимкнено» -- і тут теж: інакше він чекав би,
+            // поки власник сам відкриє свою карту, а до того залишався б
+            // невидимим для всіх.
+            OZ_PdaAudience.Fix(od, ownerUid);
 
             if (!Broadcasts(od, myUid, myKey))
             {
@@ -982,19 +1071,17 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
             // 2. ПРИЛАД УВІМКНЕНИЙ (ТЗ-4 R-A2.1--R-A2.4). Перевіряється в того,
             // КОГО видно, а не в того, хто дивиться: вимкнений екран досі
-            // лишав гравця на чужих картах, знімала лише вийнята антена.
-            // Живлення головніше за антену: нема живлення -- нема вещання,
-            // хай що стоїть у відсіках. Ступінь 4 (GPS) з'явиться разом із
-            // модулем GPS (R-B2.2); поки його немає, її нема чого перевіряти.
+            // лишав гравця на чужих картах, знімав лише вийнятий модуль.
+            // Живлення головніше за залізо: нема живлення -- нема вещання,
+            // хай що стоїть у відсіках.
             if (!theirs.OZ_IsOn())
                 continue;
 
-            if (AntennaRange(theirs) <= 0)
-                continue;
-
-            // 4. GPS (ТЗ-4 R-A2.4 п. 4, R-B2.2): прилад, який не знає, де він,
-            // не може сказати цього нікому.
-            if (!theirs.OZ_HasModuleKind(OZ_PdaConst.MOD_GPS))
+            // 3. GPS ІЗ ДАЛЬНІСТЮ -- ОДНА СХОДИНКА, А НЕ ДВІ (ТЗ-4 R-A2.4
+            // п. 3 і п. 4). Прилад, який не знає, де він, не може сказати
+            // цього нікому, а прилад без дальності не має чим; відколи це
+            // один модуль, обидві умови міряє одне число.
+            if (TransponderRange(theirs) <= 0)
                 continue;
 
             // Ім'я -- власника сесії, координати -- держателя (R-B2.1a).
@@ -1039,8 +1126,8 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         return who.GetPlainId();
     }
 
-    // Кому цей гравець показує свою позицію. Режим -- НАБІР (ТЗ-4 R-A3.1):
-    // порожній -- нікому; "public" -- усім; "contacts" і/або "faction" --
+    // Кому цей гравець показує свою позицію. Коло глядачів -- НАБІР
+    // (ТЗ-4 R-A3.1): "public" -- усім; "contacts" і/або "faction" --
     // записнику і/або своїм по угрупованню, і досить будь-якого одного.
     private bool Broadcasts(OZ_PlayerData them, string toUid, string toKey)
     {
@@ -1048,6 +1135,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // публічно»: Peek віддає null на того, чийого файлу на диску немає.
         if (!them)
             return false;
+        // Порожній НАБІР сюди більше не доходить -- його полагодив
+        // OZ_PdaAudience.Fix перед викликом, -- але гілка лишається: запис
+        // без файла на диску сюди приходить саме таким.
         if (!them.TransponderSet || them.TransponderSet.Count() == 0)
             return false;
 
@@ -1077,9 +1167,13 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         return false;
     }
 
-    // ПЕРЕМАГАЄ БІЛЬША ДАЛЬНІСТЬ (ТЗ-4 R-F3.1): дві антени в приладі дають
-    // радіус сильнішої, а не тієї, що стоїть у першому гнізді.
-    private float AntennaRange(OZ_PDA_Base pda)
+    // ПЕРЕМАГАЄ БІЛЬША ДАЛЬНІСТЬ (ТЗ-4 R-F3.1): два приймачі в приладі дають
+    // радіус сильнішого, а не того, що стоїть у першому гнізді.
+    //
+    // Дальність несе запис GPS (рішення власника 2026-09-09). Ненульова
+    // відповідь означає одразу дві сходинки старої драбини маячків: прилад
+    // знає, де він, і має чим це сказати.
+    private float TransponderRange(OZ_PDA_Base pda)
     {
         float best = 0;
         for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
@@ -1089,7 +1183,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
                 continue;
 
             OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
-            if (!spec || spec.Kind != OZ_PdaConst.MOD_ANTENNA)
+            if (!spec || spec.Kind != OZ_PdaConst.MOD_GPS)
                 continue;
 
             if (spec.RangeM > best)
@@ -1152,6 +1246,13 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             want.Clear();
             want.Insert("public");
         }
+
+        // ПОРОЖНІЙ НАБІР БІЛЬШЕ НЕ ВИМИКАЄ. Кнопка кола глядачів його вже не
+        // шле, але операція приходить із мережі, і «нікому» -- це той самий
+        // вимикач, якого не стало. Замість відмови підставляємо поставочне
+        // коло: гравець просив тихіше, а тихіше за нього вже нікуди.
+        if (want.Count() == 0)
+            want.Insert(OZ_PdaConst.TRANS_DEFAULT);
 
         // R-A3.4: без мода фракцій режиму "faction" не існує -- ВІДМОВА з
         // причиною, а не мовчазне «прийняв і не роблю».
