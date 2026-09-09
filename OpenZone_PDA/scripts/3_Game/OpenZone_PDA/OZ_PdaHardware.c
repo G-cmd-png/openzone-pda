@@ -326,6 +326,25 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             warnings++;
         }
 
+        // НАШ ВЛАСНИЙ МЕРТВИЙ ЗАПИС ВИКИДАЄМО, і лише його.
+        //
+        // Модуля антени більше немає (рішення власника 2026-09-09), а рядок
+        // про нього у файлі -- наш же слід: його поклав туди LoadDefaults
+        // попередніх версій. Класу немає в жодному моді, вид "antenna" не
+        // означає нічого, і лишити рядок означало б скаржитись на нього
+        // КОЖЕН бут. Чужий модуль із тим самим видом лишається зі скаргою
+        // нижче: то запис адміна або іншого мода, і його доля не наша.
+        //
+        // Ззаду наперед -- як і решта викидань у цьому методі.
+        for (int an = Modules.Count() - 1; an >= 0; an--)
+        {
+            if (Modules[an].ClassName != "OZ_Module_Antenna")
+                continue;
+            OZ_Log.Warn("module \"OZ_Module_Antenna\" no longer exists - the transponder range comes from the GPS module now, and this entry is dropped");
+            Modules.Remove(an);
+            warnings++;
+        }
+
         // Локальна копія числа: ToString() кличемо на змінній, а не на
         // виразі доступу до статичної константи.
         float gpsRange = OZ_PdaConst.GPS_RANGE_DEFAULT;
