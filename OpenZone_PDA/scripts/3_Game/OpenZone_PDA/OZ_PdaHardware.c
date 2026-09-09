@@ -51,7 +51,8 @@ class OZ_ModuleSpec
     // Радіус упевненого прийому транспондера в метрах. Має сенс лише для
     // "gps": прилад, який не знає, де він, не має чого вести. Нуль у записі
     // GPS Validate замінює поставочним OZ_PdaConst.GPS_RANGE_DEFAULT --
-    // причина в коментарі при тій константі.
+    // причина в коментарі при тій константі. У записі виду "spy" число не
+    // означає нічого, і Validate його обнуляє.
     float RangeM = 0;
 
     // У СКІЛЬКИ РАЗІВ ця плата піднімає витрату живлення приладу
@@ -397,6 +398,20 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             {
                 OZ_Log.Warn("module \"" + m.ClassName + "\" has no usable RangeM for a GPS, set to " + gpsRange.ToString());
                 m.RangeM = gpsRange;
+                warnings++;
+            }
+
+            // ШПИГУНСЬКА ПЛАТА ДАЛЬНОСТІ НЕ МАЄ, і число в її рядку -- слід
+            // мертвого виду "antenna": дальність маяка тепер бере лише GPS
+            // (TransponderRange відсіює все, крім виду gps), тож для виду spy
+            // це поле не читає ніхто. Мовчки лишити його не можна: у формі
+            // адмінки воно виглядає робочим, і адмін крутить число, яке ні на
+            // що не впливає. Обнуляємо ЯК ПОЧИНКУ, зі збільшенням warnings --
+            // файл перепишеться один раз, а наступний бут пройде мовчки.
+            if (m.Kind == OZ_PdaConst.MOD_SPY && m.RangeM > 0)
+            {
+                OZ_Log.Warn("module \"" + m.ClassName + "\" is a spy plate, which has no range of its own - RangeM cleared to 0");
+                m.RangeM = 0;
                 warnings++;
             }
 
