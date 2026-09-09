@@ -23,16 +23,17 @@ ButtonWidgetClass OZ_MarkerRow {
    priority 0
    style rover_sim_colorable
   }
+  // Підсвітка обраного, ПІД усім іншим -- та сама, що в рядку контактів (токен $pick). Тут стояла смужка в три одиниці кольору $accent: на 303 одиницях ширини її не було видно, і обрана мітка виглядала як необрана (звіт власника 2026-09-09, дефект 6). Один ідіом виділення на всі списки КПК.
   PanelWidgetClass RowPick {
    visible 0
    ignorepointer 1
    position 0 0
-   size 3 42
+   size 1 1
    hexactpos 1
    vexactpos 1
-   hexactsize 1
-   vexactsize 1
-   color 0.31 0.71 0.91 1
+   hexactsize 0
+   vexactsize 0
+   color 0.31 0.71 0.91 0.18
    priority 1
    style rover_sim_colorable
   }
