@@ -443,6 +443,54 @@ class OZ_PdaPageMap : OZ_PdaPage
         return false;
     }
 
+    // ПОДВІЙНИЙ КЛІК ПО РЯДКУ СПИСКУ -- ПОКАЗАТИ ЦЮ МІТКУ: карта стає так,
+    // щоб мітка опинилась у центрі (рішення власника 2026-09-09).
+    //
+    // Одинарний клік лишається тим, чим був, -- обрати й підсвітити, карти не
+    // рухати. Саме тому, що карту смикав КОЖЕН вибір, SetMapPos із Pick() і
+    // забрали (звіт власника 2026-09-09, дефект 1); тепер «покажи мені її» --
+    // окремий жест, про який гравець просить сам, а не наслідок вибору.
+    //
+    // МАСШТАБ НЕ ЧІПАЄМО (рішення власника 2026-09-09): наскільки близько
+    // дивитись, гравець вирішив сам. Ціна -- притиск рушія: він не дає
+    // поставити центр так, щоб за краєм мапи лишилась порожнеча, тож на
+    // далекому масштабі мітка біля краю світу стане не рівно посередині (той
+    // самий притиск, через який Paint() спершу наближає, а потім цілиться, --
+    // зміряно на стенді 2026-09-09). Це межа рушія, не наша.
+    //
+    // GPS тут ні до чого: стати на МІТКУ -- не те саме, що сказати «ти тут»
+    // (ТЗ-4 R-B2.2), тож жест працює й на приладі, який не знає, де він.
+    override bool OnPageDoubleClick(Widget w, int x, int y)
+    {
+        // Тільки рядки списку: UserID 5, ім'я віджета -- Id мітки, як в
+        // OnPageClick. Діти рядка всі ignorepointer (розкладка
+        // oz_pda_marker_row), тож під курсором завжди сам рядок -- шукати
+        // предка з UserID 5 нема потреби.
+        //
+        // Подвійний клік по самій карті лишається тим, чим був, -- парою
+        // одинарних, які збирає OnPageMouseUp.
+        if (!w || w.GetUserID() != 5)
+            return false;
+
+        OZ_MapMarker m = FindMarker(w.GetName());
+        if (!m || !m_Map)
+            return false;
+
+        // Вибір і підсвітка -- ті самі, що від одинарного кліку. Перший клік
+        // пари їх, найпевніше, уже поставив, але порядку подій рушія ми не
+        // міряли, тож жест робить це сам.
+        if (m_PickedId != m.Id)
+            Pick(m.Id);
+
+        // ПОЗИЦІЯ -- ОСТАННІМ РЯДКОМ, і це не випадковість. Pick() тягне за
+        // собою Paint(), а той на першому кадрі вкладки сам ставить масштаб і
+        // центр; наше прохання мусить лягти ПІСЛЯ нього, інакше карту зсунуть
+        // уже після нас. Той самий порядок «спершу масштаб, потім позиція»,
+        // що й у Paint() (Task 85).
+        m_Map.SetMapPos(m.Pos.ToVector());
+        return true;
+    }
+
     // Коло від найтихішого до найгучнішого (ТЗ-4 R-A3.1, R-A3.2):
     //   contacts -> faction -> faction+contacts -> public -> contacts.
     // Випадкове натискання підвищує гучність на один крок, а не вмикає одразу
@@ -591,7 +639,17 @@ class OZ_PdaPageMap : OZ_PdaPage
 
         PaintMarkButton();
         Paint();
-        RebuildRows(true);
+
+        // ПІДСВІТКУ ПЕРЕМАЛЬОВУЄМО НА МІСЦІ, А НЕ ПЕРЕБУДОВОЮ СПИСКУ.
+        //
+        // Тут стояло RebuildRows(true): вибір міняє в рядку рівно одну річ --
+        // смужку RowPick, -- а перебудова вбивала (Unlink) УСІ рядки й робила
+        // на їхньому місці нові. Оку це коштувало скинутий скрол і мигтіння,
+        // а подвійному кліку -- усього жесту: перший клік пари знищував саме
+        // той віджет, на який мав прийти другий (рішення власника
+        // 2026-09-09 -- подвійний клік центрує карту). Рядки мусять пережити
+        // жест, тому вибір їх більше не перестворює.
+        PaintPick();
     }
 
     private OZ_MapMarker FindMarker(string id)
@@ -642,9 +700,40 @@ class OZ_PdaPageMap : OZ_PdaPage
         return "mk_marker";
     }
 
-    // Перебудувати рядки списку. force -- перебудувати завжди (вибір
-    // змінився, підсвітку треба перемалювати); без force -- лише коли
-    // самі мітки змінилися, бо стан приходить щосекунди.
+    // Підсвітка обраного рядка -- НА МІСЦІ, без перестворення рядків: єдине,
+    // що в рядку залежить від вибору, -- смужка RowPick. Ім'я рядка -- це Id
+    // мітки (див. RebuildRows), тому шукати нічого не треба.
+    //
+    // Разом із нею -- напис кнопки ведення: він теж залежить від вибору, і
+    // більше ніде не ставиться.
+    private void PaintPick()
+    {
+        for (int i = 0; m_RowWgts && i < m_RowWgts.Count(); i++)
+        {
+            Widget row = m_RowWgts[i];
+            if (!row)
+                continue;
+
+            Widget pick = row.FindAnyWidget("RowPick");
+            if (pick)
+                pick.Show(row.GetName() == m_PickedId);
+        }
+
+        if (m_BtnTrack)
+        {
+            if (m_PickedId != "" && m_PickedId == OZ_PdaTrack.Id)
+                SetText("BtnMarkTrackText", "#STR_OZ_MAP_UNTRACK");
+            else
+                SetText("BtnMarkTrackText", "#STR_OZ_MAP_TRACK");
+        }
+    }
+
+    // Перебудувати рядки списку. force -- перебудувати завжди (список щойно
+    // відкрили, ведення чи маршрут змінились); без force -- лише коли самі
+    // мітки змінилися, бо стан приходить щосекунди.
+    //
+    // ВИБОРУ В ПІДПИСІ БІЛЬШЕ НЕМАЄ: рядки переживають зміну вибору, а
+    // підсвітку кладе PaintPick -- див. коментар у Pick().
     private void RebuildRows(bool force)
     {
         if (!m_Rows || !m_ListOpen)
@@ -659,7 +748,7 @@ class OZ_PdaPageMap : OZ_PdaPage
                 sig += mk.Id + "|" + mk.Name + "|" + mk.Desc + ";";
             }
         }
-        sig += "@" + m_PickedId + "#" + OZ_PdaTrack.Id;
+        sig += "#" + OZ_PdaTrack.Id;
         if (m_State && m_State.Route)
             sig += "$" + m_State.Route.Count().ToString();
         sig += "&" + OZ_PdaRoute.At.ToString() + OZ_PdaRoute.Active.ToString();
@@ -702,7 +791,8 @@ class OZ_PdaPageMap : OZ_PdaPage
             if (!row)
                 break;
 
-            // Ім'я віджета -- Id мітки: саме його читає OnClick.
+            // Ім'я віджета -- Id мітки: саме його читають і OnPageClick, і
+            // OnPageDoubleClick, і PaintPick.
             row.SetName(mrk.Id);
             row.SetUserID(5);
             m_RowWgts.Insert(row);
@@ -747,10 +837,6 @@ class OZ_PdaPageMap : OZ_PdaPage
             TextWidget desc = TextWidget.Cast(row.FindAnyWidget("RowDesc"));
             if (desc)
                 desc.SetText(OZ_Text.Clip(mrk.Desc, 64));
-
-            Widget pick = row.FindAnyWidget("RowPick");
-            if (pick)
-                pick.Show(mrk.Id == m_PickedId);
         }
 
         // Стопка складається САМА: MarkerRows -- WrapSpacer із «Size To
@@ -761,13 +847,9 @@ class OZ_PdaPageMap : OZ_PdaPage
         // 2026-09-04 -- 30 рядків дають рівно 30 x 42, а скрол прокручує.
         m_Rows.Update();
 
-        if (m_BtnTrack)
-        {
-            if (m_PickedId != "" && m_PickedId == OZ_PdaTrack.Id)
-                SetText("BtnMarkTrackText", "#STR_OZ_MAP_UNTRACK");
-            else
-                SetText("BtnMarkTrackText", "#STR_OZ_MAP_TRACK");
-        }
+        // Свіжі рядки народжуються без підсвітки -- кладемо її одним місцем
+        // на всю сторінку, тим самим, яким її міняє вибір.
+        PaintPick();
 
         int rpts = 0;
         if (m_State && m_State.Route)

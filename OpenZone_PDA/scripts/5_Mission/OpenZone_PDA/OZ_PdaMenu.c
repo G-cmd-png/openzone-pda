@@ -1487,6 +1487,30 @@ class OZ_PdaMenu : UIScriptedMenu
         return super.OnClick(w, x, y, button);
     }
 
+    // ПОДВІЙНИЙ клік їде на сторінку тим самим шляхом, що й одинарний, і
+    // тими самими двома адресатами. Подія окрема (enwidgets.c:660), і меню
+    // ловить її для БУДЬ-ЯКОГО свого віджета: подія, яку обробник не спожив,
+    // піднімається батьками до кореня розкладки, а обробник кореня -- меню
+    // (ваніль робить так само: консоль розробника ловить подвійний клік по
+    // списках і по мапі саме на рівні меню, scriptconsole.c:332).
+    //
+    // Кнопку фільтруємо так само, як на відпусканні: двічі правою -- це не
+    // подвійний клік лівою (ідіом ванілі, serverbrowserentry.c:140).
+    override bool OnDoubleClick(Widget w, int x, int y, int button)
+    {
+        if (button == MouseState.LEFT && m_Current != "" && m_Pages.Contains(m_Current))
+        {
+            if (m_Pages.Get(m_Current).OnPageDoubleClick(w, x, y))
+                return true;
+
+            OZ_PdaPage twin = Companion();
+            if (twin && twin.OnPageDoubleClick(w, x, y))
+                return true;
+        }
+
+        return super.OnDoubleClick(w, x, y, button);
+    }
+
     override bool OnMouseButtonDown(Widget w, int x, int y, int button)
     {
         if (m_Current != "" && m_Pages.Contains(m_Current))
