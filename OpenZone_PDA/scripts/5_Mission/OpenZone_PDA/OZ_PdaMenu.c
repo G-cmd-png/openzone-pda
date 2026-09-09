@@ -74,6 +74,23 @@ class OZ_PdaMenu : UIScriptedMenu
     private string m_PinNew  = "";
     private bool   m_HasPin  = false;
 
+    // «НАЗАД» ЧИТАЄТЬСЯ ОПИТУВАННЯМ, А НЕ ПОДІЄЮ КЛАВІШІ.
+    //
+    // OnKeyPress приходить від віджета, який ТРИМАЄ фокус, і поле вводу
+    // забирає клавіатуру собі: до меню Escape звідти не доходить. На карті це
+    // ставалось одразу -- рушій сам дає фокус першому багаторядковому полю при
+    // побудові (той самий факт тримає OZ_PdaPageNotes), тобто MarkerDesc, --
+    // і КПК не закривався клавішею взагалі (звіт власника 2026-09-09, дефект 4).
+    // На інших сторінках досить було клацнути в поле.
+    //
+    // Ваніль вирішує це рівно так: ChatInputMenu (5_mission/gui/chat) сам
+    // ставить фокус у EditBox і при цьому закривається з Update(), опитуючи
+    // UAUIBack; MissionGameplay.ShowChat вішає ті самі виключення входу
+    // {"menu"}, що й ми, -- отже виключення цей вхід не глушать. Заразом
+    // Escape перестає бути прибитим: гравець, який перепризначив «назад»,
+    // отримує СВОЮ клавішу.
+    private UAIDWrapper m_BackInput;
+
     void OZ_PdaMenu()
     {
         m_Pages = new map<string, ref OZ_PdaPage>();
@@ -82,6 +99,8 @@ class OZ_PdaMenu : UIScriptedMenu
 
     override Widget Init()
     {
+        m_BackInput = GetUApi().GetInputByID(UAUIBack).GetPersistentWrapper();
+
         layoutRoot = GetGame().GetWorkspace().CreateWidgets("OpenZone_PDA/gui/layouts/oz_pda_menu.layout");
         if (!layoutRoot)
             return null;
@@ -1315,19 +1334,55 @@ class OZ_PdaMenu : UIScriptedMenu
         PaintPinPrompt(why);
     }
 
+    // «Назад»: крок назад із екрана коду, інакше -- геть із КПК.
+    //
+    // Одне тіло на два шляхи -- опит UAUIBack і подія клавіші, -- і саме тому
+    // воно ОДНЕ: шляхи бачать те саме натискання, і якби кожен вирішував сам,
+    // добровільний екран коду скасувався б РАЗОМ із закриттям вікна. Другий
+    // виклик у тому ж натисканні відсікає позначка часу нижче.
+    private int m_BackAtMs = 0;
+
+    private void Back()
+    {
+        int now = GetGame().GetTime();
+        // 200 мс -- це менше за будь-яке подвійне натискання людиною й більше
+        // за будь-який розрив між кадром і подією клавіші.
+        if (now - m_BackAtMs < 200)
+            return;
+        m_BackAtMs = now;
+
+        // Добровільний екран коду скасовується; примусовий -- ні, бо з
+        // замкненого пристрою виходити нема куди, крім як із меню.
+        if (m_PinMode != "" && m_PinMode != "unlock")
+        {
+            EndPin();
+            return;
+        }
+
+        Close();
+    }
+
+    // Кадровий опит «назад». Дешевий: один прапорець рушія на кадр, поки
+    // вікно відкрите. ГОЛОВНИЙ шлях: він єдиний працює, коли клавіатуру
+    // тримає поле вводу.
+    override void Update(float timeslice)
+    {
+        super.Update(timeslice);
+
+        if (!m_BackInput)
+            return;
+        if (m_BackInput.InputP().LocalPress())
+            Back();
+    }
+
     override bool OnKeyPress(Widget w, int x, int y, int key)
     {
+        // Escape лишається ЗАПАСНИМ шляхом -- на випадок, якщо опит UAUIBack
+        // мовчить (чужі виключення входу, перепризначення). Коли працюють
+        // обидва, друге спрацювання з'їдає позначка часу в Back().
         if (key == KeyCode.KC_ESCAPE)
         {
-            // Добровільний екран коду скасовується; примусовий -- ні, бо з
-            // замкненого пристрою виходити нема куди, крім як із меню.
-            if (m_PinMode != "" && m_PinMode != "unlock")
-            {
-                EndPin();
-                return true;
-            }
-
-            Close();
+            Back();
             return true;
         }
 
