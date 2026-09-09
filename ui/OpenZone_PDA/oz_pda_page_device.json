@@ -93,8 +93,6 @@
                  "note": "Порожній рядок відмови: відсоток заряду живе у смузі стану оболонки, а сюди пише лише SetHintSticky -- «немає живлення», «немає батареї» (OZ_PdaPageDevice.c, op power). У звичайному малюванні PaintCharge ставить сюди порожній рядок, і липка відмова тримається свої секунди. Ховати не можна: іншого місця в тієї відмови немає."}},
       {"bar":   {"name": "ChargeBar", "w": "fill", "track": "$rule", "fill": "$accent",
                  "note": "Порожня доріжка: ChargeBarFill розтягує PaintCharge часткою заряду."}},
-      {"text":  {"name": "RadText", "h": 44, "plain": true, "grow": false, "font": "hint", "color": "$bad",
-                 "note": "Переноситься: «На цьому сервері немає системи радіації.» -- 39 літер."}},
       {"gap":   {"h": "fill"}},
       {"rule":  {"name": "DangerRule", "color": "$bad"}},
       {"hbox": {"h": "$size.field", "children": [

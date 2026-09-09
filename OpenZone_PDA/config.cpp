@@ -82,6 +82,13 @@ class CfgPatches
         // and the GPS were one module split in two, and the GPS is the one
         // that stayed. Devices that hold a persisted antenna plate lose it
         // with the class.
+        //
+        // OZ_Module_Radiometer and OZ_Module_Dosimeter are gone the same way
+        // (owner decision 2026-09-09). Radiation is not the PDA's subject:
+        // the two boards were screens for numbers only a radiation mod can
+        // supply, and with no such mod on the server they read "no data" from
+        // the day they shipped. A mod that wants them declares its own board
+        // and its own page, the way the radio does.
         units[] =
         {
             "OZ_PDA_Novice",
@@ -90,8 +97,6 @@ class CfgPatches
             "OZ_DataCarrier_Chip",
             "OZ_DataCarrier_Floppy",
             "OZ_DataCarrier_Drive",
-            "OZ_Module_Radiometer",
-            "OZ_Module_Dosimeter",
             "OZ_Module_SpyAntenna",
             "OZ_Module_Decryptor",
             "OZ_Module_GPS"
@@ -324,21 +329,10 @@ class CfgVehicles
         inventorySlot[] = {"OZ_Module1", "OZ_Module2", "OZ_Module3"};
     };
 
-    // Geiger counter: measures the field around you, right now.
-    class OZ_Module_Radiometer : OZ_Module_Base
-    {
-        scope = 2;
-        displayName = "$STR_OZ_MOD_RADIOMETER";
-        descriptionShort = "$STR_OZ_MOD_RADIOMETER_DESC";
-    };
-
-    // Injected sensor: measures the dose already in your body.
-    class OZ_Module_Dosimeter : OZ_Module_Base
-    {
-        scope = 2;
-        displayName = "$STR_OZ_MOD_DOSIMETER";
-        descriptionShort = "$STR_OZ_MOD_DOSIMETER_DESC";
-    };
+    // The Geiger counter and the injected dose sensor stood here, and they
+    // are gone (owner decision 2026-09-09): see the note in CfgPatches above.
+    // Nothing replaces them in this mod -- radiation left with them, contract
+    // and all.
 
     // GPS receiver, and the transponder with it (owner decision 2026-09-09).
     // Without it the map still shows marks and routes, but no "you", no

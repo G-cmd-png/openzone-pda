@@ -293,16 +293,20 @@ modded class OZ_VppAdminMenu
         // "markers" тут було залишком старої моделі й брехало адмінові.
         // Вид ПІДКАЗУЄМО, а не вгадуємо: порожнє поле Validate зустріне
         // скаргою «модуль причепиться й не робитиме нічого», а вписати сюди
-        // "gps" означало б підштовхнути адміна до другого приймача. Слова
-        // "antenna" тут більше немає -- цього виду не існує з 2026-09-09.
+        // "gps" означало б підштовхнути адміна до другого приймача. Слів
+        // "antenna", "radiometer" і "dosimeter" тут більше немає -- цих видів
+        // не існує з 2026-09-09.
+        //
+        // Підказка -- ДЕШИФРАТОР: єдиний вид, якого в приладі може не бути й
+        // від другого примірника якого нічого не ламається.
         if (kind == "module")
-            SetEdit("HwKind", OZ_PdaConst.MOD_RADIOMETER);
+            SetEdit("HwKind", OZ_PdaConst.MOD_DECRYPTOR);
         else
             SetEdit("HwKind", "");
         m_HwWritable = true;
         PaintHwToggles();
         if (kind == "module")
-            Hint("new module: classname is the key, Kind is gps/radiometer/dosimeter/decryptor/spy or a foreign one, then SAVE");
+            Hint("new module: classname is the key, Kind is gps/decryptor/spy or a foreign one, then SAVE");
         else
             Hint("new " + kind + ": classname is the key, then SAVE");
     }

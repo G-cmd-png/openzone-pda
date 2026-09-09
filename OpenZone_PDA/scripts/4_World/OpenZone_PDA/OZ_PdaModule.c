@@ -1224,20 +1224,10 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             st.DiscordLinked = (pd.DiscordId != "");
         }
 
-        // Радіацію питаємо ЛИШЕ якщо є чим міряти. Питати те, чого нема чим
-        // виміряти, і малювати відповідь -- це вигадувати цифри.
-        // ...і лише якщо пристрій УВІМКНЕНО. Замірник живиться від нього, і
-        // вимкнений КПК, який показує поточний фон, -- це не прилад.
-        bool wantAmbient = st.Powered && pda.OZ_HasModuleKind(OZ_PdaConst.MOD_RADIOMETER);
-        bool wantDose    = st.Powered && pda.OZ_HasModuleKind(OZ_PdaConst.MOD_DOSIMETER);
-        if (wantAmbient || wantDose)
-        {
-            OZ_RadiationReading rr = OZ_PdaRadiation.Read(player, wantAmbient, wantDose);
-            st.HasRadiationProvider = rr.HasProvider;
-            st.AmbientUSvH = rr.AmbientUSvH;
-            st.DoseUSv     = rr.DoseUSv;
-            st.DoseWarnUSv = rr.DoseWarnUSv;
-        }
+        // ТУТ ПИТАЛИ РАДІАЦІЮ, і більше не питають (рішення власника
+        // 2026-09-09): радіометра й дозиметра в моді немає, а без них питати
+        // нема кому й нема чим. Договір OZ_PdaRadiation пішов слідом -- він
+        // існував рівно заради цих двох рядків.
 
         string outJson;
         string err;

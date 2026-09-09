@@ -147,23 +147,13 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
         Modules  = new array<ref OZ_ModuleSpec>();
         Carriers = new array<ref OZ_CarrierSpec>();
 
-        OZ_ModuleSpec radio = new OZ_ModuleSpec();
-        radio.ClassName    = "OZ_Module_Radiometer";
-        radio.DisplayName  = "#STR_OZ_MOD_RADIOMETER";
-        radio.Kind         = "radiometer";
-        radio.PowerFactor  = 1.4;
-        radio.EnablesPages = new array<string>();
-        Modules.Insert(radio);
-
-        OZ_ModuleSpec dose = new OZ_ModuleSpec();
-        dose.ClassName    = "OZ_Module_Dosimeter";
-        dose.DisplayName  = "#STR_OZ_MOD_DOSIMETER";
-        dose.Kind         = "dosimeter";
-        // Ін'єкційний датчик живиться сам і батарею КПК майже не чіпає.
-        dose.PowerFactor  = 1.05;
-        dose.EnablesPages = new array<string>();
-        Modules.Insert(dose);
-
+        // РАДІОМЕТРА Й ДОЗИМЕТРА ТУТ БІЛЬШЕ НЕМАЄ (рішення власника
+        // 2026-09-09). Обидві плати були екранами для чисел, які дає лише мод
+        // радіації, і без такого мода стояли з чесним «немає даних» -- відсік
+        // з'їдений, користі нуль. Радіація пішла з ними цілком: договору
+        // OZ_PdaRadiation у моді теж немає. Мод, якому вона потрібна, оголосить
+        // свою плату і свою сторінку так само, як це робить рація.
+        //
         // GPS -- ОДИН МОДУЛЬ НА ДВІ КОЛИШНІ ПЛАТИ (рішення власника
         // 2026-09-09). Без нього прилад НЕ ЗНАЄ, де він (ТЗ-4 R-B2.2): мітки
         // й маршрут працюють, а «ти тут», відстані й транспондер -- ні. Окрема
@@ -327,21 +317,35 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
             warnings++;
         }
 
-        // НАШ ВЛАСНИЙ МЕРТВИЙ ЗАПИС ВИКИДАЄМО, і лише його.
+        // НАШІ ВЛАСНІ МЕРТВІ ЗАПИСИ ВИКИДАЄМО, і лише їх.
         //
-        // Модуля антени більше немає (рішення власника 2026-09-09), а рядок
-        // про нього у файлі -- наш же слід: його поклав туди LoadDefaults
-        // попередніх версій. Класу немає в жодному моді, вид "antenna" не
-        // означає нічого, і лишити рядок означало б скаржитись на нього
-        // КОЖЕН бут. Чужий модуль із тим самим видом лишається зі скаргою
-        // нижче: то запис адміна або іншого мода, і його доля не наша.
+        // Трьох наших плат більше немає (рішення власника 2026-09-09): антени,
+        // радіометра й дозиметра. Рядки про них у файлі -- наш же слід: їх
+        // поклав туди LoadDefaults попередніх версій. Класів немає в жодному
+        // моді, види "antenna", "radiometer" і "dosimeter" не означають нічого,
+        // і лишити рядки означало б скаржитись на них КОЖЕН бут.
+        //
+        // ПЕРЕЛІК ІМЕНАМИ, А НЕ ПЕРЕВІРКОЮ ConfigIsExisting. Виклик є й дешевий
+        // -- він стоїть нижче в цьому ж методі, -- але відповідає на інше
+        // питання: «класу немає в ЗАВАНТАЖЕНИХ конфігах». Це рівно те, що каже
+        // плата чужого мода, якого на цьому стенді немає навмисно (у нас це
+        // OZ_Module_Radio, і стенд КПК крутиться саме так). Викидати її означало
+        // б стирати чужий запис адміна щоразу, коли той мод не піднявся, --
+        // тобто мовчки псувати файл при частковому наборі модів. Перелік
+        // натомість називає те, що ми ЗНАЄМО мертвим назавжди: наші власні
+        // класи, які ми самі й прибрали.
         //
         // Ззаду наперед -- як і решта викидань у цьому методі.
+        array<string> retired = new array<string>();
+        retired.Insert("OZ_Module_Antenna");
+        retired.Insert("OZ_Module_Radiometer");
+        retired.Insert("OZ_Module_Dosimeter");
+
         for (int an = Modules.Count() - 1; an >= 0; an--)
         {
-            if (Modules[an].ClassName != "OZ_Module_Antenna")
+            if (retired.Find(Modules[an].ClassName) == -1)
                 continue;
-            OZ_Log.Warn("module \"OZ_Module_Antenna\" no longer exists - the transponder range comes from the GPS module now, and this entry is dropped");
+            OZ_Log.Warn("module \"" + Modules[an].ClassName + "\" no longer exists in this mod - the entry is dropped");
             Modules.Remove(an);
             warnings++;
         }
@@ -377,12 +381,17 @@ class OZ_PdaHardwareConfig : OZ_ConfigBase
                 warnings++;
             }
 
-            // ВИД "antenna" МЕРТВИЙ, і мовчати про це не можна: запис із ним
-            // лишається у файлі, виглядає робочим і не робить нічого. Скарга
-            // БЕЗ ПОЧИНКИ (див. шапку Validate): що робити з чужим записом --
-            // вирішує адмін, а не ми за нього.
+            // ВИДИ "antenna", "radiometer" І "dosimeter" МЕРТВІ, і мовчати про
+            // це не можна: запис із таким видом лишається у файлі, виглядає
+            // робочим і не робить нічого. Скарга БЕЗ ПОЧИНКИ (див. шапку
+            // Validate): що робити з чужим записом -- вирішує адмін, а не ми за
+            // нього. Наші власні три класи сюди вже не доходять -- їх викинуто
+            // вище за класнеймом.
             if (m.Kind == "antenna")
                 OZ_Log.Warn("module \"" + m.ClassName + "\" has Kind \"antenna\", which no longer exists - the transponder range comes from the GPS module now, and this entry does nothing");
+
+            if (m.Kind == "radiometer" || m.Kind == "dosimeter")
+                OZ_Log.Warn("module \"" + m.ClassName + "\" has Kind \"" + m.Kind + "\", which no longer exists - radiation left the PDA on 2026-09-09, and this entry does nothing");
 
             if (m.RangeM < 0)
             {

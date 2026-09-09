@@ -1559,28 +1559,6 @@ FrameWidgetClass OZ_PageDevice {
         }
        }
       }
-      // Переноситься: «На цьому сервері немає системи радіації.» -- 39 літер.
-      MultilineTextWidgetClass RadText {
-       visible 1
-       ignorepointer 1
-       position 0 320
-       size 611 44
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.88 0.32 0.32 1
-       priority 10
-       text ""
-       font "gui/fonts/sdf_MetronBook24"
-       "exact text" 1
-       "exact text size" 14
-       "text halign" left
-       "text valign" top
-       wrap 1
-       "size to text h" 0
-       "size to text v" 0
-      }
       PanelWidgetClass DangerRule {
        visible 1
        ignorepointer 1
@@ -1591,7 +1569,7 @@ FrameWidgetClass OZ_PageDevice {
        hexactsize 1
        vexactsize 1
        color 0.88 0.32 0.32 1
-       priority 12
+       priority 11
        style rover_sim_colorable
       }
       ButtonWidgetClass BtnFactoryDev {

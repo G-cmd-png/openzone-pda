@@ -536,7 +536,6 @@ class OZ_PdaPageDevice : OZ_PdaPage
         PaintCarrier(st);
         PaintSession(st);
         PaintLock(st);
-        PaintRadiation(st);
     }
 
     private void PaintCharge(OZ_PdaDeviceStatus st)
@@ -990,60 +989,5 @@ class OZ_PdaPageDevice : OZ_PdaPage
             SetText("BtnAutoLockText", "#STR_OZ_AUTOLOCK_OFF_BTN");
         else
             SetText("BtnAutoLockText", "#STR_OZ_AUTOLOCK_ON_BTN");
-    }
-
-    private void PaintRadiation(OZ_PdaDeviceStatus st)
-    {
-        TextWidget w = Text("RadText");
-        if (!w)
-            return;
-
-        bool anyModule = false;
-        for (int b = 0; b < st.Bays.Count(); b++)
-        {
-            string k = st.Bays[b].Kind;
-            if (k == OZ_PdaConst.MOD_RADIOMETER || k == OZ_PdaConst.MOD_DOSIMETER)
-            {
-                anyModule = true;
-                break;
-            }
-        }
-
-        if (!anyModule)
-        {
-            w.Show(false);
-            return;
-        }
-
-        w.Show(true);
-
-        if (!st.HasRadiationProvider)
-        {
-            // Приладу є, даних немає. Нуль тут був би брехнею: нуль означає
-            // «чисто».
-            w.SetText("#STR_OZ_RAD_NO_PROVIDER");
-            return;
-        }
-
-        string line = "";
-
-        if (st.AmbientUSvH >= 0)
-        {
-            line += "#STR_OZ_RAD_AMBIENT";
-            line += " " + st.AmbientUSvH.ToString() + " uSv/h";
-        }
-
-        if (st.DoseUSv >= 0)
-        {
-            if (line != "")
-                line += "     ";
-            line += "#STR_OZ_RAD_DOSE";
-            line += " " + st.DoseUSv.ToString() + " uSv";
-        }
-
-        if (line == "")
-            line = "#STR_OZ_RAD_NO_DATA";
-
-        w.SetText(line);
     }
 }

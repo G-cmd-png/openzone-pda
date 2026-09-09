@@ -139,14 +139,9 @@ class OZ_PdaDeviceStatus
     // --- прив'язка ---
     bool   DiscordLinked = false;
 
-    // --- радіація ---
-    // Присилається лише якщо вставлено відповідний модуль. Від'ємне значення
-    // означає «немає даних» і мусить малюватись саме так, а не нулем: нуль
-    // означає «чисто», і брехати цим не можна.
-    bool  HasRadiationProvider = false;
-    float AmbientUSvH = -1;
-    float DoseUSv     = -1;
-    float DoseWarnUSv = -1;
+    // ЧОТИРЬОХ ПОЛІВ РАДІАЦІЇ ТУТ БІЛЬШЕ НЕМАЄ (рішення власника 2026-09-09):
+    // радіометр і дозиметр прибрані з мода, а без них цю капсулу не заповнює
+    // ніхто і не читає ніхто.
 
     void OZ_PdaDeviceStatus()
     {
@@ -196,10 +191,6 @@ class OZ_PdaDeviceStatus
         c.SessionMine = SessionMine;
         c.SnapshotAt  = SnapshotAt;
         c.DiscordLinked = DiscordLinked;
-        c.HasRadiationProvider = HasRadiationProvider;
-        c.AmbientUSvH = AmbientUSvH;
-        c.DoseUSv     = DoseUSv;
-        c.DoseWarnUSv = DoseWarnUSv;
 
         int i;
         if (Pages)
