@@ -660,9 +660,15 @@ class OZ_PdaMenu : UIScriptedMenu
             tab.SetName(pageId);
             tab.SetUserID(1);         // так OnClick відрізняє вкладку від решти
 
+            // Набір ЗВІДКИ БРАТИ картинку більше не наш: Icon() віддає повне
+            // посилання "set:<набір> image:<спрайт>", і склейка рації чи
+            // фракцій називає в ньому СВІЙ набір (рішення власника
+            // 2026-09-09). Тут стояло "set:oz_pda_icons image:" + ..., тобто
+            // рейка вміла малювати лише з атласа КПК -- і чужі значки мусили
+            // лежати в ньому.
             ImageWidget icon = ImageWidget.Cast(tab.FindAnyWidget("TabIcon"));
             if (icon)
-                icon.LoadImageFile(0, "set:oz_pda_icons image:" + OZ_PdaPageFactory.Icon(pageId));
+                icon.LoadImageFile(0, OZ_PdaPageFactory.Icon(pageId));
 
             TextWidget label = TextWidget.Cast(tab.FindAnyWidget("TabLabel"));
             if (label)

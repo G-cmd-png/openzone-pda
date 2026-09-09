@@ -132,15 +132,13 @@ def _(d):
     line(d, [(14, 6), (14, 50)], w=4)
     poly(d, [(14, 8), (46, 16), (14, 26)])
 
-@sprite("tab_faction")
-def _(d):
-    poly(d, [(28, 6), (48, 14), (46, 32), (28, 50), (10, 32), (8, 14)], w=4)
-
-@sprite("tab_radio")
-def _(d):
-    disc(d, 28, 42, 4)
-    for r in (12, 20, 28):
-        ring(d, 28, 42, r, w=4, start=210, end=330)
+# tab_faction and tab_radio are NOT here, and that is the point (owner
+# decision 2026-09-09): a page's tab icon comes from the module that registers
+# the page. They were the pictures of two mods the PDA does not contain, and
+# they now live in the atlas of the glue that brings the page --
+# openzone-factions/tools/icons/make_icons.py (oz_factions_icons) and
+# openzone-radio/tools/icons/make_icons.py (oz_radio_icons), which draw them
+# from a copy of this file's primitives, so the pictures stay identical.
 
 @sprite("tab_page")
 def _(d):

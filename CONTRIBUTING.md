@@ -47,7 +47,14 @@ cannot be accepted. **GPL code in particular cannot go in.**
 - **Icons**: `tools/icons/make_icons.py` draws the atlas and writes the PNG and
   the `.imageset`; it does not touch `ui/OpenZone_PDA/oz_pda_icons_sheet.json`
   (the gallery sheet description), which is kept by hand and must list the same
-  sprite names.
+  sprite names. **`oz_pda_icons` holds the PDA's own pictures and no one else's**
+  (owner decision 2026-09-09): a page's tab icon comes from the module that
+  registers the page, so a mod bringing a page ships its own `.imageset` beside
+  its own `_ca.paa` inside its own pbo, declares it in its `CfgMods` `class defs
+  { class imageSets { files[] = {...}; }; }`, and passes the full reference to
+  `OZ_PdaPageFactory.Sprite(pageId, "set:<its set> image:<its sprite>")`. A bare
+  sprite name still means this atlas, which is how the seven built-in pages
+  register theirs.
 - **No hard dependency beyond Community Framework and OpenZone Core.** Those two are
   in `requiredAddons` by design — without the core the game refuses to load the PDA
   at all, and that is the platform decision of 2026-09-01, not an oversight.

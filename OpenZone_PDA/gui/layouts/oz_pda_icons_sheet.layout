@@ -389,7 +389,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:tab_faction"
+       image0 "set:oz_pda_icons image:tab_page"
        mode blend
        "src alpha" 1
       }
@@ -406,7 +406,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "tab_faction"
+       text "tab_page"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -438,7 +438,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:tab_radio"
+       image0 "set:oz_pda_icons image:st_signal"
        mode blend
        "src alpha" 1
       }
@@ -455,7 +455,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "tab_radio"
+       text "st_signal"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -487,7 +487,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:tab_page"
+       image0 "set:oz_pda_icons image:st_battery"
        mode blend
        "src alpha" 1
       }
@@ -504,7 +504,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "tab_page"
+       text "st_battery"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -536,7 +536,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_signal"
+       image0 "set:oz_pda_icons image:st_battery_low"
        mode blend
        "src alpha" 1
       }
@@ -553,7 +553,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_signal"
+       text "st_battery_low"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -585,7 +585,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_battery"
+       image0 "set:oz_pda_icons image:st_lock"
        mode blend
        "src alpha" 1
       }
@@ -602,7 +602,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_battery"
+       text "st_lock"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -634,7 +634,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_battery_low"
+       image0 "set:oz_pda_icons image:st_hidden"
        mode blend
        "src alpha" 1
       }
@@ -651,7 +651,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_battery_low"
+       text "st_hidden"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -683,7 +683,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_lock"
+       image0 "set:oz_pda_icons image:st_power"
        mode blend
        "src alpha" 1
       }
@@ -700,7 +700,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_lock"
+       text "st_power"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -732,7 +732,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_hidden"
+       image0 "set:oz_pda_icons image:badge"
        mode blend
        "src alpha" 1
       }
@@ -749,7 +749,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_hidden"
+       text "badge"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -781,7 +781,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:st_power"
+       image0 "set:oz_pda_icons image:mk_marker"
        mode blend
        "src alpha" 1
       }
@@ -798,7 +798,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "st_power"
+       text "mk_marker"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -830,7 +830,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:badge"
+       image0 "set:oz_pda_icons image:mk_stash"
        mode blend
        "src alpha" 1
       }
@@ -847,7 +847,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "badge"
+       text "mk_stash"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -879,7 +879,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:mk_marker"
+       image0 "set:oz_pda_icons image:mk_danger"
        mode blend
        "src alpha" 1
       }
@@ -896,7 +896,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "mk_marker"
+       text "mk_danger"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -928,7 +928,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:mk_stash"
+       image0 "set:oz_pda_icons image:mk_route"
        mode blend
        "src alpha" 1
       }
@@ -945,7 +945,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "mk_stash"
+       text "mk_route"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -977,7 +977,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:mk_danger"
+       image0 "set:oz_pda_icons image:fx_duty"
        mode blend
        "src alpha" 1
       }
@@ -994,7 +994,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "mk_danger"
+       text "fx_duty"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1026,7 +1026,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:mk_route"
+       image0 "set:oz_pda_icons image:fx_freedom"
        mode blend
        "src alpha" 1
       }
@@ -1043,7 +1043,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "mk_route"
+       text "fx_freedom"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1075,7 +1075,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_duty"
+       image0 "set:oz_pda_icons image:fx_loners"
        mode blend
        "src alpha" 1
       }
@@ -1092,7 +1092,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_duty"
+       text "fx_loners"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1124,7 +1124,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_freedom"
+       image0 "set:oz_pda_icons image:fx_bandits"
        mode blend
        "src alpha" 1
       }
@@ -1141,7 +1141,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_freedom"
+       text "fx_bandits"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1173,7 +1173,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_loners"
+       image0 "set:oz_pda_icons image:fx_mercs"
        mode blend
        "src alpha" 1
       }
@@ -1190,7 +1190,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_loners"
+       text "fx_mercs"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1222,7 +1222,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_bandits"
+       image0 "set:oz_pda_icons image:fx_monolith"
        mode blend
        "src alpha" 1
       }
@@ -1239,7 +1239,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_bandits"
+       text "fx_monolith"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1271,7 +1271,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_mercs"
+       image0 "set:oz_pda_icons image:fx_ecologists"
        mode blend
        "src alpha" 1
       }
@@ -1288,7 +1288,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_mercs"
+       text "fx_ecologists"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1320,7 +1320,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_monolith"
+       image0 "set:oz_pda_icons image:fx_clearsky"
        mode blend
        "src alpha" 1
       }
@@ -1337,7 +1337,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_monolith"
+       text "fx_clearsky"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1369,7 +1369,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_ecologists"
+       image0 "set:oz_pda_icons image:fx_military"
        mode blend
        "src alpha" 1
       }
@@ -1386,7 +1386,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_ecologists"
+       text "fx_military"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1418,7 +1418,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_clearsky"
+       image0 "set:oz_pda_icons image:ui_close"
        mode blend
        "src alpha" 1
       }
@@ -1435,7 +1435,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_clearsky"
+       text "ui_close"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1467,7 +1467,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:fx_military"
+       image0 "set:oz_pda_icons image:ui_check"
        mode blend
        "src alpha" 1
       }
@@ -1484,7 +1484,7 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.58 0.65 0.71 1
        priority 1
-       text "fx_military"
+       text "ui_check"
        font "gui/fonts/sdf_MetronBook24"
        "exact text" 1
        "exact text size" 10
@@ -1516,109 +1516,11 @@ FrameWidgetClass OZ_IconsSheet {
        vexactsize 1
        color 0.31 0.71 0.91 1
        priority 0
-       image0 "set:oz_pda_icons image:ui_close"
-       mode blend
-       "src alpha" 1
-      }
-      TextWidgetClass Name30 {
-       visible 1
-       ignorepointer 1
-       halign center_ref
-       valign bottom_ref
-       position 0 8
-       size 150 16
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.58 0.65 0.71 1
-       priority 1
-       text "ui_close"
-       font "gui/fonts/sdf_MetronBook24"
-       "exact text" 1
-       "exact text size" 10
-       "text halign" center
-       "text valign" center
-      }
-     }
-    }
-    FrameWidgetClass Cell31 {
-     visible 1
-     position 0 0
-     size 151.75 92.4
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     priority 31
-     {
-      ImageWidgetClass Icon31 {
-       visible 1
-       ignorepointer 1
-       halign center_ref
-       valign center_ref
-       position 0 -12
-       size 40 40
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.31 0.71 0.91 1
-       priority 0
-       image0 "set:oz_pda_icons image:ui_check"
-       mode blend
-       "src alpha" 1
-      }
-      TextWidgetClass Name31 {
-       visible 1
-       ignorepointer 1
-       halign center_ref
-       valign bottom_ref
-       position 0 8
-       size 150 16
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.58 0.65 0.71 1
-       priority 1
-       text "ui_check"
-       font "gui/fonts/sdf_MetronBook24"
-       "exact text" 1
-       "exact text size" 10
-       "text halign" center
-       "text valign" center
-      }
-     }
-    }
-    FrameWidgetClass Cell32 {
-     visible 1
-     position 0 0
-     size 151.75 92.4
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     priority 32
-     {
-      ImageWidgetClass Icon32 {
-       visible 1
-       ignorepointer 1
-       halign center_ref
-       valign center_ref
-       position 0 -12
-       size 40 40
-       hexactpos 1
-       vexactpos 1
-       hexactsize 1
-       vexactsize 1
-       color 0.31 0.71 0.91 1
-       priority 0
        image0 "set:oz_pda_icons image:ui_mine"
        mode blend
        "src alpha" 1
       }
-      TextWidgetClass Name32 {
+      TextWidgetClass Name30 {
        visible 1
        ignorepointer 1
        halign center_ref

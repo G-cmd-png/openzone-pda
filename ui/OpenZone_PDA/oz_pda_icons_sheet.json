@@ -319,7 +319,7 @@
           40,
           40
          ],
-         "image": "tab_faction",
+         "image": "tab_page",
          "color": "$accent"
         }
        },
@@ -338,7 +338,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "tab_faction"
+         "text": "tab_page"
         }
        }
       ]
@@ -360,7 +360,7 @@
           40,
           40
          ],
-         "image": "tab_radio",
+         "image": "st_signal",
          "color": "$accent"
         }
        },
@@ -379,7 +379,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "tab_radio"
+         "text": "st_signal"
         }
        }
       ]
@@ -401,7 +401,7 @@
           40,
           40
          ],
-         "image": "tab_page",
+         "image": "st_battery",
          "color": "$accent"
         }
        },
@@ -420,7 +420,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "tab_page"
+         "text": "st_battery"
         }
        }
       ]
@@ -442,7 +442,7 @@
           40,
           40
          ],
-         "image": "st_signal",
+         "image": "st_battery_low",
          "color": "$accent"
         }
        },
@@ -461,7 +461,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_signal"
+         "text": "st_battery_low"
         }
        }
       ]
@@ -483,7 +483,7 @@
           40,
           40
          ],
-         "image": "st_battery",
+         "image": "st_lock",
          "color": "$accent"
         }
        },
@@ -502,7 +502,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_battery"
+         "text": "st_lock"
         }
        }
       ]
@@ -524,7 +524,7 @@
           40,
           40
          ],
-         "image": "st_battery_low",
+         "image": "st_hidden",
          "color": "$accent"
         }
        },
@@ -543,7 +543,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_battery_low"
+         "text": "st_hidden"
         }
        }
       ]
@@ -565,7 +565,7 @@
           40,
           40
          ],
-         "image": "st_lock",
+         "image": "st_power",
          "color": "$accent"
         }
        },
@@ -584,7 +584,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_lock"
+         "text": "st_power"
         }
        }
       ]
@@ -606,7 +606,7 @@
           40,
           40
          ],
-         "image": "st_hidden",
+         "image": "badge",
          "color": "$accent"
         }
        },
@@ -625,7 +625,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_hidden"
+         "text": "badge"
         }
        }
       ]
@@ -647,7 +647,7 @@
           40,
           40
          ],
-         "image": "st_power",
+         "image": "mk_marker",
          "color": "$accent"
         }
        },
@@ -666,7 +666,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "st_power"
+         "text": "mk_marker"
         }
        }
       ]
@@ -688,7 +688,7 @@
           40,
           40
          ],
-         "image": "badge",
+         "image": "mk_stash",
          "color": "$accent"
         }
        },
@@ -707,7 +707,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "badge"
+         "text": "mk_stash"
         }
        }
       ]
@@ -729,7 +729,7 @@
           40,
           40
          ],
-         "image": "mk_marker",
+         "image": "mk_danger",
          "color": "$accent"
         }
        },
@@ -748,7 +748,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "mk_marker"
+         "text": "mk_danger"
         }
        }
       ]
@@ -770,7 +770,7 @@
           40,
           40
          ],
-         "image": "mk_stash",
+         "image": "mk_route",
          "color": "$accent"
         }
        },
@@ -789,7 +789,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "mk_stash"
+         "text": "mk_route"
         }
        }
       ]
@@ -811,7 +811,7 @@
           40,
           40
          ],
-         "image": "mk_danger",
+         "image": "fx_duty",
          "color": "$accent"
         }
        },
@@ -830,7 +830,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "mk_danger"
+         "text": "fx_duty"
         }
        }
       ]
@@ -852,7 +852,7 @@
           40,
           40
          ],
-         "image": "mk_route",
+         "image": "fx_freedom",
          "color": "$accent"
         }
        },
@@ -871,7 +871,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "mk_route"
+         "text": "fx_freedom"
         }
        }
       ]
@@ -893,7 +893,7 @@
           40,
           40
          ],
-         "image": "fx_duty",
+         "image": "fx_loners",
          "color": "$accent"
         }
        },
@@ -912,7 +912,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_duty"
+         "text": "fx_loners"
         }
        }
       ]
@@ -934,7 +934,7 @@
           40,
           40
          ],
-         "image": "fx_freedom",
+         "image": "fx_bandits",
          "color": "$accent"
         }
        },
@@ -953,7 +953,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_freedom"
+         "text": "fx_bandits"
         }
        }
       ]
@@ -975,7 +975,7 @@
           40,
           40
          ],
-         "image": "fx_loners",
+         "image": "fx_mercs",
          "color": "$accent"
         }
        },
@@ -994,7 +994,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_loners"
+         "text": "fx_mercs"
         }
        }
       ]
@@ -1016,7 +1016,7 @@
           40,
           40
          ],
-         "image": "fx_bandits",
+         "image": "fx_monolith",
          "color": "$accent"
         }
        },
@@ -1035,7 +1035,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_bandits"
+         "text": "fx_monolith"
         }
        }
       ]
@@ -1057,7 +1057,7 @@
           40,
           40
          ],
-         "image": "fx_mercs",
+         "image": "fx_ecologists",
          "color": "$accent"
         }
        },
@@ -1076,7 +1076,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_mercs"
+         "text": "fx_ecologists"
         }
        }
       ]
@@ -1098,7 +1098,7 @@
           40,
           40
          ],
-         "image": "fx_monolith",
+         "image": "fx_clearsky",
          "color": "$accent"
         }
        },
@@ -1117,7 +1117,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_monolith"
+         "text": "fx_clearsky"
         }
        }
       ]
@@ -1139,7 +1139,7 @@
           40,
           40
          ],
-         "image": "fx_ecologists",
+         "image": "fx_military",
          "color": "$accent"
         }
        },
@@ -1158,7 +1158,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_ecologists"
+         "text": "fx_military"
         }
        }
       ]
@@ -1180,7 +1180,7 @@
           40,
           40
          ],
-         "image": "fx_clearsky",
+         "image": "ui_close",
          "color": "$accent"
         }
        },
@@ -1199,7 +1199,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_clearsky"
+         "text": "ui_close"
         }
        }
       ]
@@ -1221,7 +1221,7 @@
           40,
           40
          ],
-         "image": "fx_military",
+         "image": "ui_check",
          "color": "$accent"
         }
        },
@@ -1240,7 +1240,7 @@
          "font": "tiny",
          "color": "$muted",
          "align": "center",
-         "text": "fx_military"
+         "text": "ui_check"
         }
        }
       ]
@@ -1262,95 +1262,13 @@
           40,
           40
          ],
-         "image": "ui_close",
-         "color": "$accent"
-        }
-       },
-       {
-        "label": {
-         "name": "Name30",
-         "anchor": "bottom-center",
-         "at": [
-          0,
-          8
-         ],
-         "size": [
-          150,
-          16
-         ],
-         "font": "tiny",
-         "color": "$muted",
-         "align": "center",
-         "text": "ui_close"
-        }
-       }
-      ]
-     }
-    },
-    {
-     "frame": {
-      "name": "Cell31",
-      "children": [
-       {
-        "icon": {
-         "name": "Icon31",
-         "anchor": "center",
-         "at": [
-          0,
-          -12
-         ],
-         "size": [
-          40,
-          40
-         ],
-         "image": "ui_check",
-         "color": "$accent"
-        }
-       },
-       {
-        "label": {
-         "name": "Name31",
-         "anchor": "bottom-center",
-         "at": [
-          0,
-          8
-         ],
-         "size": [
-          150,
-          16
-         ],
-         "font": "tiny",
-         "color": "$muted",
-         "align": "center",
-         "text": "ui_check"
-        }
-       }
-      ]
-     }
-    },
-    {
-     "frame": {
-      "name": "Cell32",
-      "children": [
-       {
-        "icon": {
-         "name": "Icon32",
-         "anchor": "center",
-         "at": [
-          0,
-          -12
-         ],
-         "size": [
-          40,
-          40
-         ],
          "image": "ui_mine",
          "color": "$accent"
         }
        },
        {
         "label": {
-         "name": "Name32",
+         "name": "Name30",
          "anchor": "bottom-center",
          "at": [
           0,
