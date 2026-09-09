@@ -27,6 +27,16 @@ class OZ_PDA_Base : ItemBase
     private bool  m_IsOn     = false;
     private float m_Charge01 = 0;
 
+    // Дзеркало «в приладі стоїть робочий GPS» для КЛІЄНТА, як m_HasPinS
+    // нижче. Таблиця заліза (Hardware.json і `Kind` кожного класу) до клієнта
+    // не доїжджає ВЗАГАЛІ -- вона читається в OnMissionStart за
+    // `if (!GetGame().IsServer()) return` (функціональний реєстр §10 D82), тож
+    // OZ_HasModuleKind на клієнті завжди відповідає «немає». Через це худ і
+    // не міг спитати про GPS сам: мінікарта малювалась на приладі без
+    // приймача (звіт власника 2026-09-09, дефект 2). Один біт замість
+    // конвеєра таблиці: питання рівно одне -- знає прилад, де він, чи ні.
+    private bool  m_HasGpsS  = false;
+
     // --- замок ---
     private string m_Pin        = "";     // порожній рядок = коду немає
     private bool   m_Unlocked   = false;  // стан ПРИСТРОЮ, не гравця
@@ -162,6 +172,7 @@ class OZ_PDA_Base : ItemBase
         RegisterNetSyncVariableFloat("m_Charge01", 0, 1, 2);
         RegisterNetSyncVariableBool("m_Unlocked");
         RegisterNetSyncVariableBool("m_HasPinS");
+        RegisterNetSyncVariableBool("m_HasGpsS");
 
         m_Store     = new OZ_SectionStore();
 
@@ -225,6 +236,10 @@ class OZ_PDA_Base : ItemBase
         if (slot_name == OZ_PdaConst.SLOT_BATTERY && GetGame().IsServer())
             PushState();
 
+        // Біт GPS -- ДО раннього виходу за idx: вигоріла плата міняє відповідь
+        // так само, як вийнята, і жоден із цих шляхів не мусить його минути.
+        OZ_SyncHardwareBits();
+
         int idx = SlotIndexOf(slot_name);
         if (idx == -1)
             return;
@@ -246,6 +261,8 @@ class OZ_PDA_Base : ItemBase
 
         if (slot_name == OZ_PdaConst.SLOT_BATTERY && GetGame().IsServer())
             PushState();
+
+        OZ_SyncHardwareBits();
 
         int idx = SlotIndexOf(slot_name);
         if (idx == -1)
@@ -309,6 +326,10 @@ class OZ_PDA_Base : ItemBase
         // Одна точка на обидва наслідки: сюди приходять attach, detach,
         // вмикання (OnWorkStart) і прокидання вже ввімкненим (RefreshPower).
         OZ_ApplyDrain();
+        // І третій наслідок: те, що клієнт мусить знати про залізо (GPS).
+        // Тут -- бо саме сюди сходяться ВСІ причини, з яких набір міг стати
+        // іншим, включно з першим прокиданням приладу після завантаження.
+        OZ_SyncHardwareBits();
 
         if (!m_IsOn)
         {
@@ -353,6 +374,36 @@ class OZ_PDA_Base : ItemBase
     // OZ_ModuleClass, а не сирий обхід гнізд: він уже знімає з рахунку
     // плату у СХОВАНОМУ відсіку (ТЗ-4 R-F2.1) і ВИГОРІЛУ плату
     // (IsRuined) -- і те, і те не працює, отже й не їсть.
+    // ЩО КЛІЄНТ МУСИТЬ ЗНАТИ ПРО ЗАЛІЗО, а спитати не може.
+    //
+    // Сьогодні це рівно одне питання: чи знає прилад, де він (ТЗ-4 R-B2.2).
+    // Худ малює мінікарту з НАДІТОГО приладу (задача 62), сервера при цьому
+    // не питає взагалі -- і питати не мусить, це оверлей на кожному кадрі.
+    // OZ_HasModuleKind йому не відповість: таблиця `Kind` серверна (§10 D82).
+    //
+    // Дорожчого конвеєра тут не треба: біт міняється лише коли міняється
+    // набір плат, а SetSynchDirty кличемо лише коли він СПРАВДІ інший --
+    // інакше кожне під'єднання батареї слало б пакет ні про що.
+    void OZ_SyncHardwareBits()
+    {
+        if (!GetGame().IsServer())
+            return;
+
+        bool gps = OZ_HasModuleKind(OZ_PdaConst.MOD_GPS);
+        if (gps == m_HasGpsS)
+            return;
+
+        m_HasGpsS = gps;
+        SetSynchDirty();
+    }
+
+    // Чи стоїть у приладі робочий приймач GPS. Читається з ОБОХ боків:
+    // сервер міряє, клієнт читає дзеркало.
+    bool OZ_HasGps()
+    {
+        return m_HasGpsS;
+    }
+
     void OZ_ApplyDrain()
     {
         if (!GetGame().IsServer())
@@ -1495,6 +1546,12 @@ class OZ_PDA_Base : ItemBase
     // пристрій не має й не повинен.
     private void PushState()
     {
+        // Заразом звіряємо біт заліза: набір плат міг стати іншим ще до того,
+        // як таблиця заліза встигла завантажитись (порядок модулів CF не
+        // гарантований), а сюди прилад приходить на кожне вмикання й на кожну
+        // зміну батареї.
+        OZ_SyncHardwareBits();
+
         bool wasOn = m_IsOn;
 
         m_IsOn = false;
