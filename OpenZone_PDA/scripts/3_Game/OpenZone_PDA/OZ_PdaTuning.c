@@ -9,6 +9,90 @@
 // маршруту) -- їх він отримує не звідси, а в конверті beacon-пуша:
 // сервер раз на тік докладає два числа, і окремий канал не потрібен.
 
+// ДОМІВКА МАПИ -- ОДИН РОЗБІРНИК НА ОБИДВІ СТОРОНИ.
+//
+// Ключ MapHome читають двоє: Validate на сервері (щоб покласти у файл
+// справжню точку замість порожнечі) і сторінка карти на клієнті (щоб
+// поставити туди мапу приладу без GPS). Розбір і запасний центр мусять бути
+// в них ОДНІ; два однакові шматки коду розійшлися б від першої ж правки.
+class OZ_PdaHome
+{
+    // Центр світу. Розмір питаємо в рушія -- тим самим GetWorldSize, яким
+    // ваніль міряє межі мапи (mapnavigationbehaviour.c), -- бо мод обіцяє
+    // працювати на будь-якій карті, а не на самій Чорнарусі.
+    static vector Centre()
+    {
+        int size = 0;
+        World w = GetGame().GetWorld();
+        if (w)
+            size = w.GetWorldSize();
+
+        // Рушій ще не назвав розміру: беремо Чорнарусь -- 15360 м у
+        // квадраті. Це запасний варіант, а не поставочне число карти.
+        if (size <= 0)
+            size = 15360;
+
+        float half = size * 0.5;
+        return Vector(half, 0, half);
+    }
+
+    // «x z» (або «x y z») -> точка. Порожній, нерозбірний чи вилізлий за межі
+    // світу рядок -- центр карти.
+    static vector Point(string s)
+    {
+        array<string> parts = new array<string>();
+        if (s != "")
+            s.Split(" ", parts);
+
+        string sx = "";
+        string sz = "";
+        if (parts.Count() == 2)
+        {
+            sx = parts[0];
+            sz = parts[1];
+        }
+        else if (parts.Count() == 3)
+        {
+            sx = parts[0];
+            sz = parts[2];
+        }
+
+        if (sx == "" || sz == "")
+            return Centre();
+
+        float x = sx.ToFloat();
+        float z = sz.ToFloat();
+
+        int size = 0;
+        World w = GetGame().GetWorld();
+        if (w)
+            size = w.GetWorldSize();
+
+        // Межі перевіряємо лише тоді, коли рушій сказав розмір: інакше
+        // порівнювати нема з чим, а відкидати адмінську точку через мовчання
+        // рушія -- гірше, ніж її прийняти.
+        if (size > 0)
+        {
+            if (x < 0 || x > size)
+                return Centre();
+            if (z < 0 || z > size)
+                return Centre();
+        }
+
+        return Vector(x, 0, z);
+    }
+
+    // Канонічний запис для файла: два числа, «x z». Метра досить -- це
+    // місце, куди дивиться мапа, а не координати схованки.
+    static string Clean(string s)
+    {
+        vector p = Point(s);
+        int x = Math.Round(p[0]);
+        int z = Math.Round(p[2]);
+        return x.ToString() + " " + z.ToString();
+    }
+}
+
 class OZ_PdaTuning : OZ_ConfigBase
 {
     // --- PIN ---
@@ -45,6 +129,13 @@ class OZ_PdaTuning : OZ_ConfigBase
     // --- мітки карти ---
     int MarkerNameMaxBytes = 32;
     int MarkerDescMaxBytes = 160;
+
+    // Куди дивиться мапа приладу БЕЗ GPS, світовими координатами «x z».
+    // Прилад не знає, де він, отже відкрити карту на гравцеві означало б
+    // сказати йому те, чого прилад не знає; замість цього -- одне й те саме
+    // місце, яке обрав адмін. Порожньо -- центр карти; Validate підставляє
+    // туди справжні числа, щоб адмін бачив у файлі точку, а не порожнечу.
+    string MapHome = "";
 
     // --- контакти ---
     // З якої відстані інший гравець вважається «поруч» для обміну.
@@ -106,6 +197,12 @@ class OZ_PdaTuning : OZ_ConfigBase
 
         MarkerNameMaxBytes = 32;
         MarkerDescMaxBytes = 160;
+
+        // Порожньо, а не число: центр карти залежить від СВІТУ, а
+        // LoadDefaults кличуть і там, де рушій ще не сказав його розміру
+        // (клієнт бере поставочні значення тим самим шляхом). Справжню
+        // точку підставляє Validate, і лише на сервері.
+        MapHome = "";
 
         FriendReachMeters   = 12;
         SwapOfferTtlSeconds = 60;
@@ -169,6 +266,17 @@ class OZ_PdaTuning : OZ_ConfigBase
         warnings += ClampMin("ToastSeconds", ToastSeconds, 2);
         warnings += ClampMin("RouteAdvanceMeters", RouteAdvanceMeters, 5);
         warnings += ClampMin("BeaconPushSeconds", BeaconPushSeconds, 2);
+
+        // ДОМІВКА МАПИ: підставляємо центр світу, коли адмін не написав
+        // точки або написав щось, з чого точки не виходить. Це ПОЧИНКА --
+        // файл після неї перепишеться раз і більше не турбуватиме.
+        string home = OZ_PdaHome.Clean(MapHome);
+        if (home != MapHome)
+        {
+            OZ_Log.Warn("Tuning: MapHome \"" + MapHome + "\" is not a world point, set to " + home);
+            MapHome = home;
+            warnings++;
+        }
     }
 
     // КЛАМП ЖИВЕ ТУТ, а не в викликача. Enforce ПЕРЕДАЄ int за посиланням --
@@ -221,6 +329,7 @@ class OZ_PdaTune
 
     static int MarkerNameMax()    { return OZ_PdaTuning.Get().MarkerNameMaxBytes; }
     static int MarkerDescMax()    { return OZ_PdaTuning.Get().MarkerDescMaxBytes; }
+    static string MapHome()       { return OZ_PdaTuning.Get().MapHome; }
 
     static int FriendReachM()     { return OZ_PdaTuning.Get().FriendReachMeters; }
     static int SwapOfferTtlMs()   { return OZ_PdaTuning.Get().SwapOfferTtlSeconds * 1000; }
