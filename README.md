@@ -14,8 +14,9 @@ on **any server and any map**, configured entirely from JSON.
   power draw. A rookie's PDA is not a Duty officer's PDA.
 - **Map and markers.** Personal, faction and server-wide markers; share a marker with a
   friend, your faction, or a radio channel.
-- **Factions, contacts and friends.** Self-contained, with optional providers that pick
-  up Expansion factions or parties when those are installed.
+- **Factions, contacts and friends.** Self-contained, with
+  [OpenZone Factions](https://github.com/covalschi/openzone-factions) as the optional
+  provider behind the core's `OZ_Identity` contract when it is installed.
 - **Chat backed by Discord.** Private conversations and group chats live as private
   Discord threads, visible only to their participants. Accounts are linked by Discord
   OAuth against the player's SteamID.
@@ -26,16 +27,33 @@ on **any server and any map**, configured entirely from JSON.
 
 ## Requirements
 
+This repository ships two Workshop items.
+
+**[OpenZone PDA](https://steamcommunity.com/sharedfiles/filedetails/?id=3798436693)**
+— the device itself. Requires:
+
 - [Community Framework](https://steamcommunity.com/sharedfiles/filedetails/?id=1559212036)
-- OpenZone Core
+- [OpenZone Core](https://github.com/covalschi/openzone-core)
 
 The Discord bridge is optional. Without it the PDA works; the chat pages report that
 they are offline.
 
+**[OpenZone PDA VPP](https://steamcommunity.com/sharedfiles/filedetails/?id=3798436822)**
+— optional companion pbo: the PDA pane inside the OpenZone admin tab of VPP Admin
+Tools. Install only alongside all of:
+
+- OpenZone PDA (above)
+- [OpenZone Core](https://github.com/covalschi/openzone-core)
+- OpenZone Core VPP — the core's own VPP tab pbo, [Workshop item
+  3798436187](https://steamcommunity.com/sharedfiles/filedetails/?id=3798436187)
+- VPP Admin Tools
+
+Without all four the game refuses to load it.
+
 ## Status
 
-Early development. Nothing is published to the Workshop yet, and the items are not in
-the central economy — an admin has to spawn them.
+Early development. Both mods are published to the Steam Workshop (links above); the
+items are not in the central economy — an admin has to spawn them.
 
 Working and exercised on a test server: the device itself (battery, power, PIN, lazy
 auto-lock, factory reset), sealed quest devices opened with a decryptor on a
