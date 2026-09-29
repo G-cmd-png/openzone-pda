@@ -24,20 +24,28 @@
 //
 // Ключ співрозмовника, а не uid: між надсиланням і відповіддю могло
 // статися все, зокрема й пермадес, а ключ несе покоління в собі.
+//
+// ДВА РІЗНІ АДРЕСАТИ. Записник -- рахунку, за який говорить прилад
+// (m_Uid), а відповідь -- тому, хто натиснув (m_To). Досі обидва були
+// рахунком, і на чужому живому терміналі «прибрано» чи відмова летіли
+// власникові -- той їх не чекав, а той, хто натиснув, так і лишався без
+// відповіді. Чат розділяв їх від початку (OZ_ChatReply).
 class OZ_ContactDropReply : OZ_BridgeReply
 {
     protected string m_Uid;
+    protected string m_To;
     protected string m_TheirKey;
 
-    void OZ_ContactDropReply(string uid, string theirKey)
+    void OZ_ContactDropReply(string uid, string to, string theirKey)
     {
         m_Uid      = uid;
+        m_To       = to;
         m_TheirKey = theirKey;
     }
 
     override void OnBody(string json)
     {
-        PlayerIdentity to = OZ_ChatWho.Online(m_Uid);
+        PlayerIdentity to = OZ_ChatWho.Online(m_To);
 
         OZ_ChatFail fail = new OZ_ChatFail();
         string err;
@@ -59,7 +67,7 @@ class OZ_ContactDropReply : OZ_BridgeReply
 
     override void OnFail(int code)
     {
-        PlayerIdentity to = OZ_ChatWho.Online(m_Uid);
+        PlayerIdentity to = OZ_ChatWho.Online(m_To);
         if (!to)
             return;
 
@@ -73,9 +81,11 @@ class OZ_ContactDropReply : OZ_BridgeReply
         if (!me)
             return;
 
+        // RemoveOrdered: з цього масиву малюється офлайнова частина
+        // записника, і Remove (обмін з останнім) переставляв би людей.
         int at = me.Friends.Find(m_TheirKey);
         if (at != -1)
-            me.Friends.Remove(at);
+            me.Friends.RemoveOrdered(at);
         OZ_PlayerStore.MarkDirty(m_Uid);
 
         // ВЗАЄМНІСТЬ -- ЛИШЕ З ЖИВИМ. Дружбу розривають з обох боків, і поки
@@ -97,7 +107,7 @@ class OZ_ContactDropReply : OZ_BridgeReply
 
         int at2 = them.Friends.Find(myKey);
         if (at2 != -1)
-            them.Friends.Remove(at2);
+            them.Friends.RemoveOrdered(at2);
 
         OZ_PlayerStore.MarkDirty(theirUid);
     }
@@ -249,6 +259,17 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
 
         array<string> seen = new array<string>();
 
+        // ЧИЇ АКАУНТИ Є В ЗАПИСНИКУ -- набором, до обходу онлайну.
+        //
+        // Ключ персонажа (KeyOf) рахувався для КОЖНОГО, хто в Зоні, раз на
+        // п'ять секунд на кожну відкриту сторінку -- щоб за рядок викинути
+        // всіх, хто не друг. Steam64 із ключа дістається різанням рядка
+        // (UidOfKey), тож чужих тепер відсіює набір, а ключ рахується лише
+        // тим, чий акаунт у записнику є.
+        map<string, bool> friendUids = new map<string, bool>();
+        for (int f = 0; f < me.Friends.Count(); f++)
+            friendUids.Set(OZ_PlayerStore.UidOfKey(me.Friends[f]), true);
+
         for (int i = 0; i < players.Count(); i++)
         {
             PlayerIdentity id = players[i].GetIdentity();
@@ -258,10 +279,14 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             string uid = id.GetPlainId();
             bool isMe = (uid == myUid);
 
+            if (!isMe && !friendUids.Contains(uid))
+                continue;
+
             // У записнику люди позначені КЛЮЧЕМ ПЕРСОНАЖА, а не Steam64:
             // той самий акаунт після пермадесу -- вже інша людина, і його
             // нове життя в чужих контактах не з'являється саме тому, що
-            // ключ інший.
+            // ключ інший. Тому акаунт у наборі -- ще не друг: друг -- лише
+            // той самий персонаж.
             string charKey = OZ_PlayerStore.KeyOf(uid);
             bool isFriend = Has(me.Friends, charKey);
 
@@ -446,13 +471,19 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         if (!d)
             return;
 
-        // ЧЕРЕЗ СЛУЖБУ, а не через OZ_RoleNames мода фракцій: те саме джерело
-        // (Seen* читає той самий файл гравця), але без імені, якого без того
-        // мода не існує -- а через нього КПК не компілювався зовсім.
-        e.Rank = OZ_Identity.Get().SeenRankName(d.SteamId);
+        // ЧЕРЕЗ СЛУЖБУ, а не через OZ_RoleNames мода фракцій: без того мода
+        // такого імені не існує, і КПК через нього не компілювався зовсім.
+        //
+        // І ВЕРСІЯ «In» -- З ДАНОГО ЗАПИСУ. Тут стояли SeenRankName(d.SteamId)
+        // і SeenTraitNames(d.SteamId, ...), тобто питання ЗА АКАУНТОМ: служба
+        // відповідала живою проекцією ролей чи живим файлом того акаунта --
+        // рівно ролями нового життя, від яких цей коментар і застерігав.
+        // d тут -- знімок замороженого покоління (ByKey), і читати треба
+        // саме його.
+        e.Rank = OZ_Identity.Get().SeenRankNameIn(d);
 
         array<string> traits = new array<string>();
-        OZ_Identity.Get().SeenTraitNames(d.SteamId, traits);
+        OZ_Identity.Get().SeenTraitNamesIn(d, traits);
         for (int i = 0; i < traits.Count(); i++)
             e.Traits.Insert(traits[i]);
 
@@ -484,14 +515,15 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         e.Mine = mine;
     }
 
-    // Те саме для того, кого немає на сервері. Проекція ролей живе рівно
-    // стільки, скільки гравець у мережі: щойно він вийшов, Forget прибирає
-    // запис -- і офлайновий контакт ставав голим ім'ям. Свій сержант з Боргу
-    // виглядав як випадковий перехожий, і лідерові пропонували «запросити»
-    // того, хто вже рік у фракції.
+    // Те саме для того, кого немає на сервері. Проекцію ролей міст дає
+    // лише тим, кого за цей запуск опитував, -- гравця, якого запуск не
+    // бачив, у ній немає, і офлайновий контакт ставав голим ім'ям. Свій
+    // сержант з Боргу виглядав як випадковий перехожий, і лідерові
+    // пропонували «запросити» того, хто вже рік у фракції.
     //
-    // Беремо знімок останнього входу. Він може бути застарілим -- список і
-    // так каже про це рядком угорі, коли міст мовчить.
+    // Служба відповідає проекцією, коли вона є, інакше -- знімком
+    // останнього входу з файла (OZ_Roles.Seen у моді фракцій). Він може бути
+    // застарілим -- список і так каже про це рядком угорі, коли міст мовчить.
     private void IdentifySeen(OZ_ContactEntry e, string uid, string myFaction, string ofid)
     {
         e.Rank = OZ_Identity.Get().SeenRankName(uid);
@@ -597,6 +629,30 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
             return "";
         }
 
+        // ЗАМОРОЖЕНИЙ КОНТАКТ -- ЛИШЕ ВИКРЕСЛИТИ, мостові не писати.
+        //
+        // pair_freeze міст виконує за парою STEAM64, а не за ключами: лист
+        // «заморозь мене й S» для ключа S#1, чиє життя скінчилось, морозив
+        // ЖИВУ розмову з S#2 -- новою людиною на тому ж акаунті. Викреслення
+        // з її боку при цьому, як і годиться, не відбувалось (Drop не лізе в
+        // чужий записник через пермадес), тож обидва лишались контактами з
+        // замороженою розмовою, а повторний обмін відповідав «уже в
+        // контактах» і розморозити її не міг нічим.
+        //
+        // Розмову з S#1 закрив ще пермадес (міст прибрав його зі складу), і
+        // морозити тут нічого. Відповідь -- одразу, моста не чекаємо.
+        if (!OZ_PlayerStore.IsLive(theirKey))
+        {
+            int dead = me.Friends.Find(theirKey);
+            if (dead != -1)
+                me.Friends.RemoveOrdered(dead);
+            OZ_PlayerStore.MarkDirty(myUid);
+
+            ok = true;
+            error = "";
+            return "";
+        }
+
         // МІСТ ПІДТВЕРДЖУЄ ПЕРШИМ (ТЗ-5 R-F3.1).
         //
         // Розірваний контакт заморожує особисту розмову: читати можна,
@@ -611,7 +667,7 @@ class OZ_PdaHandlerContacts : OZ_PageHandler
         // контакт НЕ МОЖНА. Це чесніше за «я його відрізав, а він мені
         // пише». Ретраю немає (R-F3.3, ТЗ-2 R4.2) -- гравець тисне ще раз.
         string theirUid = OZ_PlayerStore.UidOfKey(theirKey);
-        OZ_ContactDropReply reply = new OZ_ContactDropReply(myUid, theirKey);
+        OZ_ContactDropReply reply = new OZ_ContactDropReply(myUid, sender.GetPlainId(), theirKey);
         if (!OZ_PairFreeze.Send("v1/chat/pair_freeze", myUid, theirUid, reply))
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";

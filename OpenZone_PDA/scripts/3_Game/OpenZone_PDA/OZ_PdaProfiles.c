@@ -104,11 +104,22 @@ class OZ_PdaProfile
     // один відсік змушує вибирати, яку одну плату нести, три дозволяють
     // нести все. Стеля -- MODULE_SLOTS_MAX, бо слоти не
     // додаються в рантаймі.
+    //
+    // Нуль -- «ключа немає» (див. OZ_PdaLimits про те, чому після Copy() це
+    // невідрізненне): Validate поставить один відсік і скаже про це вголос.
+    // Досі забутий ключ давав модель, у якої не працює жоден відсік, --
+    // і ні рядка в лозі.
     int ModuleSlots = 1;
 
     // --- замок ---
     // Через скільки хвилин після того, як пристрій прибрали з рук, він
-    // замикається сам. Нуль вимикає автоблокування для цієї моделі зовсім.
+    // замикається сам.
+    //
+    // НУЛЬ -- «КЛЮЧА НЕМАЄ», а «ніколи» пишеться ВІД'ЄМНИМ числом (-1).
+    // Нуль означав «автоблокування вимкнено», і саме через це забутий ключ
+    // у профілі чужого приладу мовчки вимикав замок-таймер -- безпекову
+    // річ, про яку адмін не знав, що її вимкнув. Тепер нуль лікується до
+    // умовчання з рядком у лозі, а вимкнути свідомо -- це -1 у файлі.
     float LockAfterMinutes = 5;
     // Сервер забороняє гравцеві вимикати автоблокування. Для серверів, де
     // залутаний КПК має лишатись цінністю, а не безкоштовним трофеєм.
@@ -124,12 +135,21 @@ class OZ_PdaProfile
     // Відкрити можна ЛИШЕ дешифратором, і тільки часом. Тому в такого КПК
     // цінність не в залізі, а в тому, що на ньому записано.
     bool  Sealed       = false;
+    // Нуль -- «ключа немає»: миттєвий злам не режим, а забутий рядок.
     float CrackSeconds = 120;
 
     // Що на ньому вже записано, коли він з'явився у світі. Пишеться ОДИН раз,
     // при першій появі предмета -- інакше кожен рестарт відновлював би
     // стерті гравцем мітки.
     ref array<ref OZ_MapMarker> PresetMarkers;
+
+    // СТОРІНКИ, ЯКІ ЧУЖИЙ МОД УЖЕ ПРОПОНУВАВ ЦЬОМУ ПРОФІЛЮ (OZ_PdaProfiles
+    // .OfferPage). Пропозиція лягає в Pages РІВНО ОДИН раз: після цього
+    // рішення за адміном, і сторінка, яку він прибрав, назад не повертається.
+    // Без цього списку мод фракцій не мав способу дати свою вкладку жодному
+    // приладу -- профілі поставки про неї не знають (сторінка поїхала в
+    // склейку 2026-09-02), і на свіжому сервері вкладки не було ніде.
+    ref array<string> OfferedSeen;
 
     // s_Cfg живе весь запуск сервера, і ForClass читає ці поля на кожному
     // запиті кожної сторінки -- через години після розбору файла.
@@ -181,6 +201,13 @@ class OZ_PdaProfile
                 if (PresetMarkers[i])
                     c.PresetMarkers.Insert(PresetMarkers[i].Copy());
             }
+        }
+
+        c.OfferedSeen = new array<string>();
+        if (OfferedSeen)
+        {
+            for (i = 0; i < OfferedSeen.Count(); i++)
+                c.OfferedSeen.Insert(OfferedSeen[i]);
         }
 
         return c;
@@ -462,6 +489,8 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
                 p.BatteryClassNames = new array<string>();
             if (!p.PresetMarkers)
                 p.PresetMarkers = new array<ref OZ_MapMarker>();
+            if (!p.OfferedSeen)
+                p.OfferedSeen = new array<string>();
 
             // NULL-МІТКА В ПРЕСЕТІ -- законний JSON, і посів її розіменовує
             // (OZ_PDA_Base.OZ_SeedFromProfile). Викидаємо тут, щоб предмет
@@ -475,29 +504,66 @@ class OZ_PdaProfilesConfig : OZ_ConfigBase
                 warnings++;
             }
 
-            if (p.CrackSeconds < 0)
+            // ТРИ ПОЛЯ МОДЕЛІ -- та сама розмова про нуль, що й у Limits:
+            // після Copy() забутий ключ читається нулем, і кожен із цих нулів
+            // мав зміст, якого ніхто не замовляв -- модель без жодного
+            // робочого відсіку, миттєвий злам, вимкнений замок-таймер.
+            if (p.CrackSeconds <= 0)
             {
-                OZ_Log.Warn("profile \"" + p.Id + "\" has a negative CrackSeconds, clamped to 0");
-                p.CrackSeconds = 0;
+                OZ_Log.Warn(LimitMissing(p.Id, "CrackSeconds", 120) + " seconds");
+                p.CrackSeconds = 120;
                 warnings++;
             }
 
-            if (p.ModuleSlots < 0 || p.ModuleSlots > OZ_PdaConst.MODULE_SLOTS_MAX)
+            if (p.ModuleSlots <= 0)
+            {
+                OZ_Log.Warn(LimitMissing(p.Id, "ModuleSlots", 1) + " bay");
+                p.ModuleSlots = 1;
+                warnings++;
+            }
+            else if (p.ModuleSlots > OZ_PdaConst.MODULE_SLOTS_MAX)
             {
                 string wm = "profile \"" + p.Id;
                 wm += "\" asks for " + p.ModuleSlots.ToString();
                 wm += " module bays; the config declares at most ";
                 wm += OZ_PdaConst.MODULE_SLOTS_MAX.ToString();
                 OZ_Log.Warn(wm);
-                p.ModuleSlots = Math.Clamp(p.ModuleSlots, 0, OZ_PdaConst.MODULE_SLOTS_MAX);
+                p.ModuleSlots = OZ_PdaConst.MODULE_SLOTS_MAX;
                 warnings++;
             }
 
-            if (p.LockAfterMinutes < 0)
+            // Від'ємне -- свідоме «ніколи» (див. поле), його не чіпаємо.
+            if (p.LockAfterMinutes == 0)
             {
-                OZ_Log.Warn("profile \"" + p.Id + "\" has a negative LockAfterMinutes, clamped to 0");
-                p.LockAfterMinutes = 0;
+                OZ_Log.Warn(LimitMissing(p.Id, "LockAfterMinutes", 5) + " minutes; write -1 to switch the auto-lock off on purpose");
+                p.LockAfterMinutes = 5;
                 warnings++;
+            }
+        }
+
+        // ОДИН КЛАС -- ОДИН ПРОФІЛЬ. ForClass віддає перший збіг і мовчить про
+        // решту, тож клас, вписаний у два профілі, працював би за тим, що вище
+        // у файлі, а адмін правив би нижній. Скарга нічого не лагодить (хто
+        // правий -- знає лише адмін), тому warnings тут не росте.
+        array<string> seenCls = new array<string>();
+        array<string> seenIn  = new array<string>();
+        for (int d = 0; d < Profiles.Count(); d++)
+        {
+            OZ_PdaProfile dp = Profiles[d];
+            for (int dc = 0; dp.ClassNames && dc < dp.ClassNames.Count(); dc++)
+            {
+                string cls = dp.ClassNames[dc];
+                int was = seenCls.Find(cls);
+                if (was == -1)
+                {
+                    seenCls.Insert(cls);
+                    seenIn.Insert(dp.Id);
+                    continue;
+                }
+
+                string wd = "class \"" + cls + "\" is in profile \"" + seenIn[was];
+                wd += "\" and again in \"" + dp.Id + "\" - only the first one is used";
+                OZ_Log.Warn(wd);
             }
         }
     }
@@ -519,10 +585,190 @@ class OZ_PdaProfiles
         return s_Cfg.Profiles.Count();
     }
 
+    // Чи можна писати файл назад: false -- лоадер його не зрозумів і не
+    // зміг відкласти, і перезапис дефолтами знищив би чуже.
+    private static bool s_Writable = false;
+
+    // Покоління конфіга -- та сама ручка, що в OZ_PdaHardware: ввімкнений
+    // прилад звіряє його в OnWork і перераховує витрату (база профілю,
+    // відсіки) без вимикання.
+    private static int s_Gen = 0;
+
+    static int Gen() { return s_Gen; }
+
     static void ServerLoad()
     {
         s_Cfg = new OZ_PdaProfilesConfig();
-        OZ_ConfigLoader<OZ_PdaProfilesConfig>.Load(OZ_PdaConst.PROFILES, "Profiles", s_Cfg);
+        s_Writable = OZ_ConfigLoader<OZ_PdaProfilesConfig>.Load(OZ_PdaConst.PROFILES, "Profiles", s_Cfg);
+
+        // Пропозиції, що прийшли ДО завантаження (порядок OnMissionStart між
+        // модами не гарантований), лягають тут.
+        ApplyOffers();
+
+        s_Gen++;
+    }
+
+    // ------------------------------------------------ сторінки чужих модів
+    //
+    // Мод, що приносить сторінку, просить поставити її на прилади поруч із
+    // `afterPageId`. Профіль, у якому такої якірної сторінки немає, пропозицію
+    // бачить, але не бере: квестовий прилад без контактів не мусить отримати
+    // вкладку фракції.
+    //
+    // КОЖЕН ПРОФІЛЬ БАЧИТЬ ПРОПОЗИЦІЮ ОДИН РАЗ (OZ_PdaProfile.OfferedSeen):
+    // далі сторінка -- рішення адміна, і прибрана ним назад не приходить.
+    //
+    // Статики -- ЛІНИВО, а не `new` у декларації: на клієнті такий
+    // ініціалізатор уже раз не виконався (OZ_PdaRoute у худі, 2026-08-30).
+    private static ref array<string> s_OfferPage;
+    private static ref array<string> s_OfferAfter;
+
+    static void OfferPage(string pageId, string afterPageId)
+    {
+        if (pageId == "")
+            return;
+
+        if (!s_OfferPage)
+        {
+            s_OfferPage  = new array<string>();
+            s_OfferAfter = new array<string>();
+        }
+
+        if (s_OfferPage.Find(pageId) == -1)
+        {
+            s_OfferPage.Insert(pageId);
+            s_OfferAfter.Insert(afterPageId);
+        }
+
+        ApplyOffers();
+    }
+
+    private static void ApplyOffers()
+    {
+        if (!s_Cfg || !s_Cfg.Profiles || !s_OfferPage)
+            return;
+
+        bool changed = false;
+
+        for (int i = 0; i < s_Cfg.Profiles.Count(); i++)
+        {
+            OZ_PdaProfile p = s_Cfg.Profiles[i];
+            if (!p || !p.Pages)
+                continue;
+            if (!p.OfferedSeen)
+                p.OfferedSeen = new array<string>();
+
+            for (int o = 0; o < s_OfferPage.Count(); o++)
+            {
+                string page = s_OfferPage[o];
+                if (p.OfferedSeen.Find(page) != -1)
+                    continue;
+
+                p.OfferedSeen.Insert(page);
+                changed = true;
+
+                if (p.Pages.Find(page) != -1)
+                    continue;
+
+                int anchor = p.Pages.Find(s_OfferAfter[o]);
+                if (anchor == -1)
+                    continue;
+
+                p.Pages.InsertAt(page, anchor + 1);
+                OZ_Log.Info("profile \"" + p.Id + "\": page \"" + page + "\" added after \"" + s_OfferAfter[o] + "\" at its mod's request");
+            }
+        }
+
+        if (changed && s_Writable)
+            OZ_ConfigLoader<OZ_PdaProfilesConfig>.Save(OZ_PdaConst.PROFILES, "Profiles", s_Cfg);
+    }
+
+    // --------------------------------------------- відсіки, які бачить клієнт
+    //
+    // Інвентар гри питає про видимість гнізда КЛІЄНТА
+    // (OZ_PDA_Base.CanDisplayAttachmentSlot), а профілі живуть лише на
+    // сервері: без цього клієнт показував три відсіки будь-якому приладу, і
+    // плата, покладена в «зайвий», мовчки не працювала. Число їде в пакеті
+    // синхронізації ядра (OZ_PdaConst.SYNC_SLOTS) рядком "<клас>:<число>;".
+    private static ref map<string, int> s_ClientSlots;
+
+    // Сервер: усі класи всіх профілів одним рядком. Значення в пакеті ядра
+    // ріжеться розбирачем на 1023 байтах, тож хвіст понад тисячу не їде: клас,
+    // що не доїхав, клієнт показує з усіма відсіками, як і досі, а сервер
+    // однаково не прийме плату в схований відсік.
+    static string PackSlots()
+    {
+        string s = "";
+        if (!s_Cfg || !s_Cfg.Profiles)
+            return s;
+
+        for (int i = 0; i < s_Cfg.Profiles.Count(); i++)
+        {
+            OZ_PdaProfile p = s_Cfg.Profiles[i];
+            if (!p || !p.ClassNames)
+                continue;
+
+            for (int c = 0; c < p.ClassNames.Count(); c++)
+            {
+                string one = p.ClassNames[c] + ":" + p.ModuleSlots.ToString() + ";";
+                if (s.Length() + one.Length() > 1000)
+                {
+                    OZ_Log.Warn("pda: too many device classes to tell the client their bays - the rest shows every bay");
+                    return s;
+                }
+                s += one;
+            }
+        }
+        return s;
+    }
+
+    // Клієнт: розібрати рядок із пакета.
+    static void ApplyClientSlots(string packed)
+    {
+        if (!s_ClientSlots)
+            s_ClientSlots = new map<string, int>();
+        s_ClientSlots.Clear();
+
+        array<string> parts = new array<string>();
+        packed.Split(";", parts);
+        for (int i = 0; i < parts.Count(); i++)
+        {
+            string part = parts[i];
+            int at = part.IndexOf(":");
+            if (at <= 0)
+                continue;
+
+            string cls = part.Substring(0, at);
+            int n = part.Substring(at + 1, part.Length() - at - 1).ToInt();
+            s_ClientSlots.Set(cls, n);
+        }
+    }
+
+    // Статик переживає місію: наступний сервер не мусить успадкувати наші
+    // числа.
+    static void ForgetClientSlots()
+    {
+        if (s_ClientSlots)
+            s_ClientSlots.Clear();
+    }
+
+    // Скільки відсіків у цього класу -- з ОБОХ боків. Сервер питає профіль,
+    // клієнт -- те, що приїхало в пакеті. Класу, про який не знає ніхто,
+    // відповідає стеля: так поводився прилад і до цієї правки.
+    static int ModuleSlotsOf(string cls)
+    {
+        if (s_Cfg)
+        {
+            OZ_PdaProfile p = ForClass(cls);
+            if (p)
+                return p.ModuleSlots;
+            return OZ_PdaConst.MODULE_SLOTS_MAX;
+        }
+
+        int n;
+        if (s_ClientSlots && s_ClientSlots.Find(cls, n))
+            return n;
+        return OZ_PdaConst.MODULE_SLOTS_MAX;
     }
 
     // Класи, про які ми вже поскаржились. Скарга потрібна ОДНА на клас за

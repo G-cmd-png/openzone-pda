@@ -27,6 +27,15 @@ class OZ_PdaPageNotes : OZ_PdaPage
     // SAVE до її приходу створював ДРУГУ записку -- чернетка шле Id="",
     // а «створи» без Id міст виконує щоразу.
     private bool m_Saving = false;
+    // ЧИЯ ЦЕ ВІДПОВІДЬ. Лічильник росте щоразу, коли в редакторі опиняється
+    // ІНША записка: NEW, вибір рядка, викинута чернетка, видалення. SAVE і
+    // DELETE запам'ятовують його на мить відправки, і відповідь чіпає
+    // редактор, лише коли число досі те саме. Без цього пізня відповідь на
+    // збереження записки A присвоювала її Id новій чернетці чи вибраній B,
+    // і наступне SAVE перезаписувало A текстом B -- сервер править за Id.
+    private int m_EditGen = 0;
+    private int m_SaveGen = -1;
+    private int m_DelGen  = -1;
 
     override string LayoutPath()
     {
@@ -86,6 +95,7 @@ class OZ_PdaPageNotes : OZ_PdaPage
         {
             m_CurrentId = "";
             m_Draft     = true;
+            m_EditGen++;
             if (m_Title)
                 m_Title.SetText("");
             if (m_Body)
@@ -128,6 +138,7 @@ class OZ_PdaPageNotes : OZ_PdaPage
                 // Нову й ще не збережену видаляти нема чого -- просто кидаємо
                 // чернетку. Мовчазна відмова тут виглядала б як поломка.
                 m_Draft = false;
+                m_EditGen++;
                 if (m_Title)
                     m_Title.SetText("");
                 if (m_Body)
@@ -142,7 +153,10 @@ class OZ_PdaPageNotes : OZ_PdaPage
             string json;
             string err;
             if (JsonFileLoader<OZ_NoteRef>.MakeData(r, json, err, false))
+            {
+                m_DelGen = m_EditGen;
                 OZ_Rpc.Request(OZ_PdaConst.PAGE_NOTES, "delete", json);
+            }
             return true;
         }
 
@@ -160,6 +174,7 @@ class OZ_PdaPageNotes : OZ_PdaPage
         OZ_Note n = m_Book.Notes[row];
         m_CurrentId = n.Id;
         m_Draft     = false;
+        m_EditGen++;
 
         if (m_Title)
             m_Title.SetText(n.Title);
@@ -203,7 +218,8 @@ class OZ_PdaPageNotes : OZ_PdaPage
         if (!JsonFileLoader<OZ_Note>.MakeData(n, json, err, false))
             return;
 
-        m_Saving = true;
+        m_Saving  = true;
+        m_SaveGen = m_EditGen;
         OZ_Rpc.Request(OZ_PdaConst.PAGE_NOTES, "save", json);
     }
 
@@ -229,17 +245,36 @@ class OZ_PdaPageNotes : OZ_PdaPage
                 return;
             }
 
-            // Видалили -- редактор порожній.
+            // Видалили -- редактор порожній. Але ЛИШЕ якщо в ньому досі та
+            // записка, яку просили видалити: гравець, що встиг відкрити іншу
+            // чи почати нову, не мусить втратити набране. Перелік
+            // перечитується в обох випадках -- видалена з нього зникне.
             if (op == "delete")
             {
-                m_CurrentId = "";
-                m_Draft     = false;
-                if (m_Title)
-                    m_Title.SetText("");
-                if (m_Body)
-                    m_Body.SetText("");
+                if (m_DelGen == m_EditGen)
+                {
+                    m_CurrentId = "";
+                    m_Draft     = false;
+                    m_EditGen++;
+                    if (m_Title)
+                        m_Title.SetText("");
+                    if (m_Body)
+                        m_Body.SetText("");
 
-                SetText("NotesHint", "#STR_OZ_NOTES_DELETED");
+                    SetText("NotesHint", "#STR_OZ_NOTES_DELETED");
+                }
+                Request();
+                return;
+            }
+
+            // Поки летіла відповідь, у редакторі опинилась ІНША записка (NEW
+            // чи вибір рядка). Id у відповіді належить тій, що зберігалась, а
+            // не цій: присвоїти його означало б, що наступне SAVE правитиме
+            // збережену записку текстом цієї. Підказку теж не чіпаємо --
+            // «Збережено» над незбереженою чернеткою збрехало б. Лише
+            // перечитуємо перелік: збережена в ньому з'явиться.
+            if (m_SaveGen != m_EditGen)
+            {
                 Request();
                 return;
             }
@@ -250,7 +285,7 @@ class OZ_PdaPageNotes : OZ_PdaPage
             // id, тобто просило створити ще одну. Чернетка, збережена двічі,
             // ставала двома записками.
             //
-            // Ветка редагування теж проходить тут: id той самий, присвоєння
+            // Гілка редагування теж проходить тут: id той самий, присвоєння
             // безпечне, а чернеткою запис перестає бути в обох випадках.
             OZ_NoteRef saved = new OZ_NoteRef();
             string refErr;

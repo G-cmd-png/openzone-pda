@@ -273,19 +273,42 @@ class OZ_NewsPush
     // без цього поля виправлений чи стертий пост дзвонив у кожен КПК так
     // само, як щойно написаний.
     bool   Fresh;
+    // ЧИ ЦЕЙ ГРАВЕЦЬ СЛУХАЄ СТРІЧКУ НАДІТИМ приладом (ТЗ-5 R-B1.1): лише
+    // тоді свіжий допис дзвонить тостом худа. Прилад у руках скидає кеш
+    // сторінки, і тільки. Ставить сервер -- міст про прилади не знає.
+    bool   ToHud = false;
 }
 
 class OZ_NewsSink : OZ_BridgeSink
 {
     override void Deliver(string json)
     {
+        // Конверт плаский (самі скаляри), корінь створює скрипт -- копія не
+        // потрібна (правило COPY/LEAVE, як в OZ_ChatSink).
+        OZ_NewsPush p = new OZ_NewsPush();
+        string err;
+        if (!JsonFileLoader<OZ_NewsPush>.LoadData(json, p, err) || !p)
+        {
+            OZ_Log.Warn("news: unreadable push from the bridge: " + err);
+            return;
+        }
+
         // ТИМ, У КОГО Є ЧИМ ЧИТАТИ, а не всьому серверу.
         //
         // Конверт розсилався кожному підключеному -- разом із тими, у кого
         // КПК немає взагалі: повний JSON поста в один бік на кожну зміну
-        // стрічки. Той самий фільтр, що вже стоїть на живих рядках чату
-        // (OZ_ChatWho.Holders): прилад при гравці, увімкнений. Винятку для
+        // стрічки. Фільтр -- прилад при гравці, увімкнений. Винятку для
         // віртуального термінала немає -- рішення власника 2026-09-08.
+        //
+        // ДВА ПРИЛАДИ -- ДВІ ПРАВДИ (ТЗ-5 R-B1). Тут питали один, той, що в
+        // руках: вимкнений КПК у руці глушив тост надітого, а ввімкнений у
+        // руці дзвонив тостом у худ, який малює НАДІТИЙ -- навіть вимкнений.
+        // Тепер надітий увімкнений дає тост (ToHud), а прилад у руках лише
+        // освіжає сторінку.
+        string hudJson    = "";
+        string screenJson = "";
+        string merr;
+
         array<Man> players = new array<Man>();
         GetGame().GetPlayers(players);
 
@@ -299,13 +322,41 @@ class OZ_NewsSink : OZ_BridgeSink
             if (!id)
                 continue;
 
-            OZ_PDA_Base dev = OZ_PdaLookup.HeldByPlayer(pl);
-            if (!dev)
-                continue;
-            if (!dev.OZ_IsOn())
-                continue;
+            bool hud = false;
+            OZ_PDA_Base worn = OZ_PdaLookup.WornBy(pl);
+            if (worn && worn.OZ_IsOn())
+                hud = true;
 
-            OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, json, "");
+            if (!hud)
+            {
+                OZ_PDA_Base hands = OZ_PDA_Base.Cast(pl.GetItemInHands());
+                if (!hands || !hands.OZ_IsOn())
+                    continue;
+            }
+
+            string body;
+            if (hud)
+            {
+                if (hudJson == "")
+                {
+                    p.ToHud = true;
+                    if (!JsonFileLoader<OZ_NewsPush>.MakeData(p, hudJson, merr, false))
+                        continue;
+                }
+                body = hudJson;
+            }
+            else
+            {
+                if (screenJson == "")
+                {
+                    p.ToHud = false;
+                    if (!JsonFileLoader<OZ_NewsPush>.MakeData(p, screenJson, merr, false))
+                        continue;
+                }
+                body = screenJson;
+            }
+
+            OZ_Rpc.Respond(id, OZ_PdaConst.PAGE_NEWS, "push", true, body, "");
         }
     }
 
@@ -389,9 +440,6 @@ class OZ_PdaHandlerNews : OZ_PageHandler
 
         if (op == "open")
         {
-            // Розбираємо, щоб ПЕРЕВІРИТИ, і шлемо той самий документ далі:
-            // ліпити з нього другий, побайтно однаковий, означало б тримати
-            // два описи одного конверта.
             OZ_NewsRef r = new OZ_NewsRef();
             if (!JsonFileLoader<OZ_NewsRef>.LoadData(json, r, err) || !r || r.Id == "")
             {
@@ -399,7 +447,24 @@ class OZ_PdaHandlerNews : OZ_PageHandler
                 return "";
             }
 
-            OZ_BridgeClient.Call("v1/news/open", json, new OZ_NewsReply(uid, "open"));
+            // ЛИСТ ЗБИРАЄМО ЗАНОВО, а не шлемо документ клієнта далі.
+            //
+            // Досі тут їхав той самий JSON, що прислав клієнт, «бо він
+            // побайтно однаковий». Однаковий -- лише в чесного клієнта:
+            // підроблений RPC віз мостові будь-які поля й будь-який розмір, а
+            // читальний кеш ядра тримає відповідь ЗА ТЕКСТОМ ЛИСТА -- тобто
+            // той самий допис, попрошений із різними пробілами чи зайвими
+            // полями, лягав у кеш стільки разів, скільки варіантів прислали.
+            // Id допису -- id гілки Discord; 64 байти -- з запасом.
+            OZ_NewsRef ask = new OZ_NewsRef();
+            ask.Id = OZ_Text.Clip(r.Id, 64);
+            if (!JsonFileLoader<OZ_NewsRef>.MakeData(ask, letter, err, false))
+            {
+                error = "STR_OZ_ERR_PDA_INTERNAL";
+                return "";
+            }
+
+            OZ_BridgeClient.Call("v1/news/open", letter, new OZ_NewsReply(uid, "open"));
             error = OZ_Const.DEFER;
             return "";
         }

@@ -101,32 +101,35 @@ class OZ_SpyAntennaBehaviour : OZ_ModuleBehaviour
         return 5;
     }
 
-    override void OnTick(ItemBase pda, Man owner, float deltaSeconds)
+    // ЛИШЕ ПЛАТА ЦЬОГО ВІДСІКУ. Тут стояв обхід усіх відсіків у OnTick, а
+    // КПК кличе тік на КОЖЕН відсік із цією поведінкою -- тобто дві плати
+    // списували ресурс одна одній, і обидві горіли вдвічі швидше за
+    // SpyMinutes, три -- втричі.
+    override void OnTickSlot(ItemBase pda, Man owner, float deltaSeconds, int slotIndex)
     {
         OZ_PDA_Base dev = OZ_PDA_Base.Cast(pda);
         if (!dev)
             return;
 
-        for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
+        string cls = dev.OZ_ModuleClass(slotIndex);
+        if (cls == "")
+            return;
+
+        OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
+        if (!spec || spec.SpyMinutes <= 0)
+            return;
+
+        OZ_Module_SpyAntenna plate = OZ_Module_SpyAntenna.Cast(dev.OZ_ModuleSeat(slotIndex));
+        if (!plate)
+            return;
+
+        if (plate.OZ_SpyDrain(deltaSeconds, spec.SpyMinutes * 60))
         {
-            string cls = dev.OZ_ModuleClass(i);
-            if (cls == "")
-                continue;
-
-            OZ_ModuleSpec spec = OZ_PdaHardware.ModuleFor(cls);
-            if (!spec || spec.SpyMinutes <= 0)
-                continue;
-
-            OZ_Module_SpyAntenna plate = OZ_Module_SpyAntenna.Cast(dev.OZ_Attached(OZ_PdaConst.ModuleSlot(i)));
-            if (!plate)
-                continue;
-
-            if (plate.OZ_SpyDrain(deltaSeconds, spec.SpyMinutes * 60))
-            {
-                // Ресурс вийшов -- плата згорає, слід чесний.
-                plate.SetHealth("", "", 0);
-                OZ_Log.Info("pda: spy antenna burnt out on " + dev.GetType());
-            }
+            // Ресурс вийшов -- плата згорає, слід чесний. І перестає їсти
+            // батарею тієї ж миті, а не до наступного вимикання.
+            plate.SetHealth("", "", 0);
+            OZ_Log.Info("pda: spy antenna burnt out on " + dev.GetType());
+            dev.OZ_ApplyDrain();
         }
     }
 }

@@ -86,6 +86,75 @@ class OZ_BeaconPush
     }
 }
 
+// МІТКИ ПРИЛАДУ -- розібрані, скопійовані й із відповіддю, чи їх узагалі
+// можна прочитати.
+//
+// «Порожньо» і «не читається» -- різні відповіді, і плутати їх коштувало
+// даних. Розбір, що не вдався, віддавав порожній список, а marker_add
+// дописував у нього одну мітку й ЗБЕРІГАВ -- поверх усього, що лежало в
+// нечитному рядку, хоч комент поруч обіцяв «НЕ затираємо». Тепер кожен, хто
+// пише, питає unreadable і відмовляє; читачі (екран карти, експорт) бачать
+// порожнечу, як і раніше. Той самий розбір потрібен операціям із носієм
+// (OZ_PdaHandlerDevice) -- тому він тут, а не приватний у сторінки карти.
+class OZ_PdaMarks
+{
+    static OZ_MarkerList Load(OZ_PDA_Base pda, out bool unreadable)
+    {
+        unreadable = false;
+        OZ_MarkerList list = new OZ_MarkerList();
+
+        string raw = pda.OZ_MarkersJson();
+        if (raw == "")
+            return list;
+
+        string err;
+        OZ_MarkerList parsed = new OZ_MarkerList();
+        if (!JsonFileLoader<OZ_MarkerList>.LoadData(raw, parsed, err) || !parsed)
+        {
+            // Зіпсований запис НЕ мовчимо й НЕ затираємо: гравець має знати,
+            // що мітки не читаються, а адмін -- побачити це в лозі.
+            OZ_Log.Warn("markers on " + pda.GetType() + " unreadable: " + err);
+            unreadable = true;
+            return list;
+        }
+
+        if (!parsed.Items)
+            parsed.Items = new array<ref OZ_MapMarker>();
+
+        // КОПІЯ ПЕРЕД ВИХОДОМ: усе, що роблять із цим списком, робиться вже
+        // після нових виділень (шапка OZ_PdaTypes).
+        return parsed.Copy();
+    }
+}
+
+// ОДНЕ ДЖЕРЕЛО МАЯЧКА НА ТІК: гравець, чий прилад веде, і все, що про нього
+// треба знати глядачеві.
+//
+// Досі все це рахувалось ДЛЯ КОЖНОЇ ПАРИ «глядач -- ціль»: прилад цілі,
+// заморозка з файлу власника, ремонт кола глядачів, дальність по трьох
+// відсіках, ім'я -- тобто те саме n разів на кожну ціль і n^2 на весь
+// онлайн, в одному кадрі сервера раз на п'ять секунд. Тепер ціль
+// розбирається ОДИН раз на тік, а на пару лишається відстань і коло
+// глядачів.
+//
+// Гравця тут немає -- лише його Steam64 і позиція: сутність, яку тримали б
+// через кадри, могла б зникнути (вихід, смерть) раніше за наступне
+// перезбирання.
+class OZ_BeaconSource
+{
+    string BodyUid;
+    string OwnerUid;
+    ref OZ_PlayerData Od;
+    string Name;
+    vector Pos;
+    bool   Silent;
+
+    // Угруповання власника -- ЛІНИВО, лише коли його коло глядачів має
+    // "faction" і хтось у радіусі справді питає.
+    string Org;
+    bool   OrgKnown;
+}
+
 class OZ_PdaHandlerMap : OZ_PageHandler
 {
     // Один живий обробник: пуш маячків іде через нього, бо GPS, шпигунську
@@ -122,8 +191,98 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         s_Inst.m_LadderSig.Remove(uid);
     }
 
+    // ------------------------------------------------ джерела маячків
+    private ref array<ref OZ_BeaconSource> m_Sources = new array<ref OZ_BeaconSource>();
+    private int  m_SourcesAt    = 0;
+    private bool m_SourcesBuilt = false;
+
+    // Перезібрати, якщо зібране старше за maxAgeMs. Пуш бере свіже завжди
+    // (нуль); відповідь сторінки карти -- зібране цим же періодом пуша:
+    // позиція п'ятисекундної давнини там і так та сама, що в посилці.
+    private void EnsureSources(int maxAgeMs)
+    {
+        int now = GetGame().GetTime();
+        if (m_SourcesBuilt && now - m_SourcesAt < maxAgeMs)
+            return;
+
+        BuildSources();
+        m_SourcesAt    = now;
+        m_SourcesBuilt = true;
+    }
+
+    // Хто ВЕДЕ -- один раз на тік на весь онлайн.
+    //
+    // Дешеві перевірки -- ПЕРШИМИ: живлення й дальність питають сам предмет,
+    // а заморозка й коло глядачів читають файл власника. Раніше порядок був
+    // зворотний, і файл читався навіть для вимкненого приладу.
+    private void BuildSources()
+    {
+        m_Sources.Clear();
+
+        array<Man> players = new array<Man>();
+        GetGame().GetPlayers(players);
+
+        for (int i = 0; i < players.Count(); i++)
+        {
+            PlayerBase body = PlayerBase.Cast(players[i]);
+            if (!body || !body.IsAlive())
+                continue;
+            PlayerIdentity oid = body.GetIdentity();
+            if (!oid)
+                continue;
+
+            // ПРИЛАД ПРИ ГРАВЦЕВІ, що веде: надітий, інакше в руках
+            // (OZ_PdaLookup.BroadcasterOf -- чому саме так, сказано там).
+            OZ_PDA_Base dev = OZ_PdaLookup.BroadcasterOf(body);
+            if (!dev)
+                continue;
+
+            // ТЗ-4 R-A2.1--R-A2.4: живлення головніше за залізо, а GPS із
+            // дальністю -- одна сходинка, відколи це один модуль.
+            if (!dev.OZ_IsOn())
+                continue;
+            if (TransponderRange(dev) <= 0)
+                continue;
+
+            // Капсула нічого не веде (R-B1.1, R-B2.1b).
+            if (OZ_PdaCapsule.IsFrozen(dev))
+                continue;
+
+            // Налаштування, коло глядачів та ім'я -- ВЛАСНИКА СЕСІЇ приладу,
+            // координати -- того, хто його несе (ТЗ-4 R-B2.1).
+            string bodyUid  = oid.GetPlainId();
+            string ownerUid = bodyUid;
+            if (dev.OZ_SessionUid() != "")
+                ownerUid = dev.OZ_SessionUid();
+
+            // Peek: власник сесії чужого приладу може бути офлайн -- саме
+            // так і виглядає вкрадений живий термінал. Ремонт збереженого
+            // «вимкнено» -- і тут теж: інакше він чекав би, поки власник сам
+            // відкриє свою карту.
+            OZ_PlayerData od = OZ_PlayerStore.Peek(ownerUid);
+            OZ_PdaAudience.Fix(od, ownerUid);
+
+            bool silent = true;
+            if (od && od.TransponderSet && od.TransponderSet.Count() > 0)
+                silent = false;
+
+            OZ_BeaconSource s = new OZ_BeaconSource();
+            s.BodyUid  = bodyUid;
+            s.OwnerUid = ownerUid;
+            s.Od       = od;
+            s.Name     = oid.GetName();
+            if (ownerUid != bodyUid && od && od.Name != "")
+                s.Name = od.Name;
+            s.Pos      = body.GetWorldPosition();
+            s.Silent   = silent;
+            m_Sources.Insert(s);
+        }
+    }
+
     private void PushBeaconsNow()
     {
+        EnsureSources(0);
+
         array<Man> players = new array<Man>();
         GetGame().GetPlayers(players);
 
@@ -138,8 +297,16 @@ class OZ_PdaHandlerMap : OZ_PageHandler
 
             string uid = id.GetPlainId();
 
-            OZ_PDA_Base pda = OZ_PdaLookup.HeldByPlayer(pl);
+            // ПОСИЛКА -- ДЛЯ ХУДА, А ХУД МАЛЮЄ ЛИШЕ З НАДІТОГО (ТЗ-5 R-B1.1).
+            //
+            // Тут стояв HeldByPlayer, тобто після перевороту 2026-09-08 --
+            // прилад У РУКАХ: вимкнений чи безGPSний трофей у руці спорожняв
+            // мінікарту власного надітого, а трофей зі шпигунською платою
+            // вливав у неї всі транспондери. Екран карти пуш не бере -- він
+            // питає state про свій прилад сам (OZ_PdaPageMap).
+            OZ_PDA_Base pda = OZ_PdaLookup.WornBy(pl);
             string sig = "";
+            bool live = false;
 
             if (pda)
             {
@@ -154,6 +321,26 @@ class OZ_PdaHandlerMap : OZ_PageHandler
                 OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(pda.GetType());
                 if (prof)
                     pda.OZ_EvaluateLock(prof.LockAfterMinutes);
+
+                // БІТ «ЖИВА СЕСІЯ» ДЛЯ ХУДА і ШТАМП КАПСУЛИ -- тут, бо сюди
+                // кожні кілька секунд приходить кожен надітий прилад онлайну.
+                //
+                // Штамп m_SnapshotAt -- мить, по якій ріжеться історія розмов,
+                // коли прилад стане капсулою. Він ішов уперед лише на статусі
+                // сторінки «Пристрій», тож власник, що годину говорив у чаті,
+                // не заходячи на ту вкладку, лишав капсулу без цієї години.
+                string ownUid = pda.OZ_SessionUid();
+                if (ownUid != "")
+                {
+                    OZ_PlayerData ownPd = OZ_PlayerStore.Peek(ownUid);
+                    int ownEpoch = 0;
+                    if (ownPd)
+                        ownEpoch = ownPd.SessionEpoch;
+                    live = pda.OZ_IsOnline(ownEpoch);
+                    if (live)
+                        pda.OZ_TouchSnapshot(ownEpoch);
+                }
+                pda.OZ_SetLiveBit(live);
             }
 
             array<ref OZ_MapBeacon> found = new array<ref OZ_MapBeacon>();
@@ -170,8 +357,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
                     ladder = "locked";
                     if (pda.OZ_IsUnlocked())
                     {
-                        ladder = "capsule";
-                        if (!OZ_PdaCapsule.IsFrozen(pda))
+                        // Капсула й неініційований прилад -- одна сходинка:
+                        // живої сесії немає ні в того, ні в того, і карта
+                        // обох не показує (ворота: NOT_INIT, R-B1.1).
+                        ladder = "capsule or not initiated";
+                        if (live)
                         {
                             float range = TransponderRange(pda);
                             ladder = "no gps";
@@ -311,7 +501,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         return r;
     }
 
-    private bool FlushRoute(OZ_PDA_Base pda, OZ_MarkerList r, out string error)
+    private static bool FlushRoute(OZ_PDA_Base pda, OZ_MarkerList r, out string error)
     {
         string outJson;
         string err;
@@ -392,6 +582,19 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (route.Items.Count() == 0 && pda.OZ_Free() < 1)
         {
             error = "STR_OZ_ERR_MARKERS_FULL";
+            return "";
+        }
+
+        // АЛЕ ДОВЖИНА МАЄ СТЕЛЮ. «Одна ячейка» трималась на тому, що точки --
+        // копії міток, пораховані окремо; видалена мітка лишає свою копію в
+        // маршруті, і цикл «мітка -> у маршрут -> видалити мітку» ростив нитку
+        // без кінця, повз пам'ять приладу: рядок у сховищі предмета, кожна
+        // відповідь state і кожне малювання карти. Нитка не довша за пам'ять
+        // приладу -- у ній немає точки, яку прилад не зміг би колись тримати
+        // міткою.
+        if (route.Items.Count() >= pda.OZ_Max())
+        {
+            error = "STR_OZ_ERR_ROUTE_FULL";
             return "";
         }
 
@@ -502,10 +705,36 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (!c)
             return "";
 
+        int points;
+        if (!TakeRoute(pda, c, points, error))
+            return "";
+
+        ok = true;
+        error = "";
+        return "";
+    }
+
+    // ЗАБРАТИ МАРШРУТ ІЗ НОСІЯ -- одна дорога на дві кнопки.
+    //
+    // Операцію route_take не слав жоден клієнт: сторінка карти вміла лише
+    // ЗАПИСАТИ нитку на чип, а імпорт сторінки приладу знав тільки мітки й
+    // записки. Записаний маршрут на чужому КПК не відкривався нічим. Тепер
+    // IMPORT сторінки приладу забирає й маршрут (OZ_PdaHandlerDevice
+    // .CarrierImport) -- тією самою дорогою, що й ця операція.
+    static bool TakeRoute(OZ_PDA_Base pda, OZ_DataCarrier_Base c, out int points, out string error)
+    {
+        points = 0;
+
+        if (!pda || !c)
+        {
+            error = "STR_OZ_ERR_NO_DEVICE";
+            return false;
+        }
+
         if (c.OZ_Route() == "")
         {
             error = "STR_OZ_ERR_ROUTE_EMPTY";
-            return "";
+            return false;
         }
 
         OZ_MarkerList incoming = new OZ_MarkerList();
@@ -513,8 +742,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Route(), incoming, err) || !incoming || !incoming.Items)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
-            return "";
+            return false;
         }
+
+        // Копія ДО наступних виділень: елементи виділив серіалізатор.
+        incoming = incoming.Copy();
 
         // Та сама пара правил, що й у копіювання точки: причина відмови
         // називається своїм іменем, а маршрут коштує ОДНУ ячейку цілком.
@@ -522,7 +754,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (!prof)
         {
             error = "STR_OZ_ERR_NO_PROFILE";
-            return "";
+            return false;
         }
 
         // Прилад, у якого маршруту ще немає, купує під нього ячейку; той, у
@@ -532,7 +764,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (pda.OZ_RouteJson() == "" && pda.OZ_Free() < 1)
         {
             error = "STR_OZ_ERR_MARKERS_FULL";
-            return "";
+            return false;
         }
 
         // НИТКУ ЗБИРАЄМО ЗАНОВО, а не копіюємо рядок чипа в пам'ять приладу.
@@ -542,6 +774,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // робить для міток із того самого чипа. Тобто чужий чип клав у
         // прилад точки з іменами будь-якої довжини й з id, які потім
         // зіштовхувались із власними мітками гравця.
+        //
+        // Та сама стеля довжини, що й у route_add: нитка не довша за пам'ять.
+        int cap = pda.OZ_Max();
         OZ_MarkerList route = new OZ_MarkerList();
         for (int ri = 0; ri < incoming.Items.Count(); ri++)
         {
@@ -549,9 +784,19 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             if (!src)
                 continue;
 
+            if (route.Items.Count() >= cap)
+            {
+                error = "STR_OZ_ERR_ROUTE_FULL";
+                return false;
+            }
+
+            // "#r", а не "#c": лічильник носія (OZ_PdaHandlerDevice) карбує
+            // "#c" своїм числом, і в одну секунду два лічильники давали той
+            // самий id -- а route_add відмовляв додати мітку, що «вже є» в
+            // нитці, бо звіряє саме id.
             OZ_MapMarker cp = new OZ_MapMarker();
             s_Seq++;
-            cp.Id   = OZ_Time.NowUtc() + "#c" + s_Seq.ToString();
+            cp.Id   = OZ_Time.NowUtc() + "#r" + s_Seq.ToString();
             cp.Name = OZ_Text.Clip(src.Name, OZ_PdaTune.MarkerNameMax());
             cp.Desc = OZ_Text.Clip(src.Desc, OZ_PdaTune.MarkerDescMax());
             cp.Pos  = src.Pos;
@@ -561,15 +806,30 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (route.Items.Count() == 0)
         {
             error = "STR_OZ_ERR_ROUTE_EMPTY";
-            return "";
+            return false;
         }
 
         if (!FlushRoute(pda, route, error))
-            return "";
+            return false;
 
-        ok = true;
+        points = route.Items.Count();
         error = "";
-        return "";
+        return true;
+    }
+
+    // Додати мітку ВІД ІМЕНІ ІНШОЇ СТОРІНКИ -- тією самою дорогою, що й
+    // marker_add, з усіма її перевірками. Кличе чат: «забрати мітку з
+    // повідомлення» (OZ_PdaHandlerChat, op mark_take) -- відповідь тоді
+    // приходить у чат, а не в сховану сторінку карти.
+    static string AddMarkerFor(string json, PlayerIdentity sender, out bool ok, out string error)
+    {
+        ok = false;
+        if (!s_Inst)
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+        return s_Inst.MarkerAdd(json, sender, ok, error);
     }
 
     // Експорт ОДНІЄЇ мітки на носій -- вибір гравця, а не «все гуртом».
@@ -676,30 +936,26 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         return "";
     }
 
+    // Для ЧИТАННЯ: нечитна пам'ять показується порожньою. Хто ПИШЕ, той
+    // питає OZ_PdaMarks.Load сам і відмовляє на unreadable.
     private OZ_MarkerList LoadMarkers(OZ_PDA_Base pda)
     {
-        OZ_MarkerList list = new OZ_MarkerList();
+        bool unreadable;
+        return OZ_PdaMarks.Load(pda, unreadable);
+    }
 
-        string raw = pda.OZ_MarkersJson();
-        if (raw == "")
-            return list;
-
-        string err;
-        OZ_MarkerList parsed = new OZ_MarkerList();
-        if (!JsonFileLoader<OZ_MarkerList>.LoadData(raw, parsed, err) || !parsed)
+    // Операції, що ПИШУТЬ мітки, беруть список саме тут: нечитну пам'ять не
+    // перезаписують (див. OZ_PdaMarks).
+    private OZ_MarkerList MarkersForWrite(OZ_PDA_Base pda, out string error)
+    {
+        bool unreadable;
+        OZ_MarkerList list = OZ_PdaMarks.Load(pda, unreadable);
+        if (unreadable)
         {
-            // Зіпсований запис НЕ мовчимо й НЕ затираємо: гравець має знати,
-            // що мітки не читаються, а адмін -- побачити це в лозі.
-            OZ_Log.Warn("markers on " + pda.GetType() + " unreadable: " + err);
-            return list;
+            error = "STR_OZ_ERR_MARKS_CORRUPT";
+            return null;
         }
-
-        if (!parsed.Items)
-            parsed.Items = new array<ref OZ_MapMarker>();
-
-        // КОПІЯ ПЕРЕД ВИХОДОМ, з тієї ж причини, що в LoadRouteOf: усе, що
-        // роблять із цим списком, робиться вже після нових виділень.
-        return parsed.Copy();
+        return list;
     }
 
     private bool SaveMarkers(OZ_PDA_Base pda, OZ_MarkerList list)
@@ -742,7 +998,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerList list = LoadMarkers(pda);
+        OZ_MarkerList list = MarkersForWrite(pda, error);
+        if (!list)
+            return "";
 
         // `have >= free + have` -- це просто `free <= 0`, і в цьому вигляді
         // воно не змушує розбирати документ удруге.
@@ -801,7 +1059,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerList list = LoadMarkers(pda);
+        OZ_MarkerList list = MarkersForWrite(pda, error);
+        if (!list)
+            return "";
 
         int at = -1;
         for (int i = 0; i < list.Items.Count(); i++)
@@ -819,7 +1079,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        list.Items.Remove(at);
+        // УПОРЯДКОВАНО. array.Remove затикає дірку ОСТАННІМ елементом, і
+        // найновіша мітка стрибала на місце видаленої -- у списку, у виборі
+        // найближчої під кліком (MarkerNear бере перший збіг) і в пам'яті
+        // приладу, бо саме цей порядок і зберігається.
+        list.Items.RemoveOrdered(at);
 
         if (!SaveMarkers(pda, list))
         {
@@ -854,7 +1118,9 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             return "";
         }
 
-        OZ_MarkerList list = LoadMarkers(pda);
+        OZ_MarkerList list = MarkersForWrite(pda, error);
+        if (!list)
+            return "";
 
         OZ_MapMarker found;
         for (int i = 0; i < list.Items.Count(); i++)
@@ -993,8 +1259,17 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         }
 
         // Капсула живих маячків не показує (R-B1.1): світ у ній зупинився.
+        //
+        // Джерела -- ті, що зібрав пуш, якщо вони не старші за його період:
+        // сторінка карти питає state кожні п'ять секунд, і перебирати ради
+        // неї весь онлайн заново означало б подвоїти роботу пуша для
+        // кожного, в кого карта відкрита.
         if (!st.Frozen)
+        {
+            int maxAge = Math.Round(OZ_PdaTune.BeaconPushSeconds() * 1000);
+            EnsureSources(maxAge);
             FillBeacons(sender, me, pda, range, st.Beacons);
+        }
 
         return Serialise(st, ok, error);
     }
@@ -1012,84 +1287,55 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // тобто по разу на кожного, хто стоїть у радіусі приймача, п'ять разів
         // на секунду на весь онлайн.
         string myKey = OZ_PlayerStore.KeyOf(myUid);
+        string myBody = sender.GetPlainId();
+
+        // Угруповання глядача -- теж лише раз і лише якщо хтось у радіусі
+        // спитає про "faction" (див. Broadcasts).
+        string myOrg = "";
+        bool myOrgKnown = false;
 
         // GetWorldPosition, А НЕ GetPosition (дизайн гарячого шляху §5, §7):
         // object.c:292-297 розрізняє їх прямо -- світові координати з
-        // урахуванням перетворення проксі дає саме друга. Гравець у машині
-        // причеплений до неї в ієрархії, тож його GetPosition світовим бути
-        // не зобов'язаний. Обидві сторони порівняння мусять міряти однаково,
-        // а OZ_Spatial уже міряє сусідів саме так.
-        array<Man> near = new array<Man>();
-        OZ_Spatial.PlayersInRadius(me.GetWorldPosition(), range, near);
+        // урахуванням перетворення проксі дає саме друга. Обидві сторони
+        // порівняння мусять міряти однаково; джерела зібрані саме так, і
+        // відстань ТРИВИМІРНА, як у OZ_Spatial.
+        vector at = me.GetWorldPosition();
+        float r2 = range * range;
 
         // ШПИГУНСЬКА плата ламає приватність: бачить кожного, чий прилад
         // веде, хоч би яке коло глядачів той обрав. Ціна -- лічені хвилини
         // ресурсу, який плата списує сама (OZ_SpyAntennaBehaviour).
         bool spyEye = SpyActive(pda);
 
-        for (int i = 0; i < near.Count(); i++)
+        for (int i = 0; i < m_Sources.Count(); i++)
         {
-            PlayerBase other = PlayerBase.Cast(near[i]);
-            if (!other || other == me)
+            OZ_BeaconSource s = m_Sources[i];
+
+            // Себе -- ні за тілом, ні за РАХУНКОМ. Тіло -- очевидне; рахунок --
+            // ні, і саме ним ламалась приватність. Прилад говорить за
+            // власника сесії, тож злодій із живим терміналом жертви «дивився»
+            // рахунком жертви -- і бачив її власний маячок із другого
+            // приладу: коло "faction" звіряло угруповання жертви з ним самим.
+            // Рахунок не бачить самого себе ніде, хоч би скільки в нього
+            // терміналів.
+            if (s.BodyUid == myBody)
+                continue;
+            if (s.OwnerUid == myUid)
                 continue;
 
-            PlayerIdentity oid = other.GetIdentity();
-            if (!oid)
+            if (vector.DistanceSq(s.Pos, at) > r2)
                 continue;
 
-            // 1. ПРИЛАД ПРИ ГРАВЦЕВІ (руки або слот носіння) -- і не капсула:
-            // капсула нічого не веде (R-B1.1, R-B2.1b).
-            OZ_PDA_Base theirs = OZ_PdaLookup.HeldBy(oid);
-            if (!theirs)
-                continue;
-            if (OZ_PdaCapsule.IsFrozen(theirs))
-                continue;
-
-            // Налаштування, коло глядачів та ім'я -- ВЛАСНИКА СЕСІЇ приладу,
-            // координати -- того, хто його несе (ТЗ-4 R-B2.1). Украдений
-            // КПК іде там, де йде злодій, під ім'ям жертви й у її колі.
-            string otherUid = oid.GetPlainId();
-            string ownerUid = otherUid;
-            if (theirs.OZ_SessionUid() != "")
-                ownerUid = theirs.OZ_SessionUid();
-            // Peek: власник сесії чужого приладу може бути офлайн -- саме
-            // так і виглядає вкрадений живий термінал.
-            OZ_PlayerData od = OZ_PlayerStore.Peek(ownerUid);
-            // Ремонт збереженого «вимкнено» -- і тут теж: інакше він чекав би,
-            // поки власник сам відкриє свою карту, а до того залишався б
-            // невидимим для всіх.
-            OZ_PdaAudience.Fix(od, ownerUid);
-
-            if (!Broadcasts(od, myUid, myKey))
+            if (!Broadcasts(s, myUid, myKey, myOrg, myOrgKnown))
             {
-                bool silent = true;
-                if (od && od.TransponderSet && od.TransponderSet.Count() > 0)
-                    silent = false;
-                if (!spyEye || silent)
+                if (!spyEye || s.Silent)
                     continue;
             }
 
-            // 2. ПРИЛАД УВІМКНЕНИЙ (ТЗ-4 R-A2.1--R-A2.4). Перевіряється в того,
-            // КОГО видно, а не в того, хто дивиться: вимкнений екран досі
-            // лишав гравця на чужих картах, знімав лише вийнятий модуль.
-            // Живлення головніше за залізо: нема живлення -- нема вещання,
-            // хай що стоїть у відсіках.
-            if (!theirs.OZ_IsOn())
-                continue;
-
-            // 3. GPS ІЗ ДАЛЬНІСТЮ -- ОДНА СХОДИНКА, А НЕ ДВІ (ТЗ-4 R-A2.4
-            // п. 3 і п. 4). Прилад, який не знає, де він, не може сказати
-            // цього нікому, а прилад без дальності не має чим; відколи це
-            // один модуль, обидві умови міряє одне число.
-            if (TransponderRange(theirs) <= 0)
-                continue;
-
             // Ім'я -- власника сесії, координати -- держателя (R-B2.1a).
             OZ_MapBeacon b = new OZ_MapBeacon();
-            b.Name = oid.GetName();
-            if (ownerUid != otherUid && od && od.Name != "")
-                b.Name = od.Name;
-            b.Pos  = other.GetWorldPosition().ToString(false);
+            b.Name = s.Name;
+            b.Pos  = s.Pos.ToString(false);
             outBeacons.Insert(b);
         }
     }
@@ -1129,8 +1375,10 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // Кому цей гравець показує свою позицію. Коло глядачів -- НАБІР
     // (ТЗ-4 R-A3.1): "public" -- усім; "contacts" і/або "faction" --
     // записнику і/або своїм по угрупованню, і досить будь-якого одного.
-    private bool Broadcasts(OZ_PlayerData them, string toUid, string toKey)
+    private bool Broadcasts(OZ_BeaconSource src, string toUid, string toKey, inout string toOrg, inout bool toOrgKnown)
     {
+        OZ_PlayerData them = src.Od;
+
         // Порожній запис -- це «нічого про нього не знаємо», а не «веде
         // публічно»: Peek віддає null на того, чийого файлу на диску немає.
         if (!them)
@@ -1157,10 +1405,25 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         // угруповання, а не базова (ТЗ-1 §5): базова є в кожного, і «свої по
         // базовій» означало б увесь сервер. Без мода фракцій слаг "faction"
         // у наборі не буває (R-A3.4): його знімає завантаження файлу.
+        //
+        // Обидва угруповання рахуються РАЗ: своє -- раз на джерело за тік,
+        // глядача -- раз на глядача. Досі обидва питались на кожну пару.
         if (them.TransponderSet.Find("faction") != -1)
         {
-            string theirs = OZ_Identity.Get().OrgOfPlayer(null, them.SteamId);
-            if (theirs != "" && OZ_Identity.Get().OrgOfPlayer(null, toUid) == theirs)
+            if (!src.OrgKnown)
+            {
+                src.Org = OZ_Identity.Get().OrgOfPlayer(null, them.SteamId);
+                src.OrgKnown = true;
+            }
+            if (src.Org == "")
+                return false;
+
+            if (!toOrgKnown)
+            {
+                toOrg = OZ_Identity.Get().OrgOfPlayer(null, toUid);
+                toOrgKnown = true;
+            }
+            if (toOrg == src.Org)
                 return true;
         }
 

@@ -1,7 +1,9 @@
 {
   "layout": "oz_pda_page_news",
-  "note": "Сторінка «Новини»: ліворуч стрічка заголовків (рядки кладе скрипт у NewsRows), праворуч допис; ComposePanel -- оверлей написання. Імена читає OZ_PdaPageNews.c.",
-  "root": {"frame": {"name": "OZ_PageNews", "size": "$device.page", "inset": "$space.page"}},
+  "note": "Сторінка «Новини»: ліворуч стрічка заголовків (рядки кладе скрипт у NewsRows), праворуч допис; ComposePanel -- оверлей написання. WrapRuler -- невидима лінійка тим самим шрифтом, що й поле тексту допису (CmpBody): нею OZ_Unwrap відрізняє перенос рушія від Enter-а, як на сторінці нотаток. Імена читає OZ_PdaPageNews.c.",
+  "root": {"frame": {"name": "OZ_PageNews", "size": "$device.page", "inset": "$space.page", "children": [
+    {"label": {"name": "WrapRuler", "size": [12, 12], "font": "field", "color": "$none", "hidden": true}}
+  ]}},
   "body": {"hbox": {"gap": "$space.column", "children": [
     {"vbox": {"w": 400, "gap": "$space.tight", "children": [
       {"header": {"icon": "tab_news", "h": "$size.header", "title": {"name": "NewsHead", "text": "#STR_OZ_PAGE_NEWS"}}},

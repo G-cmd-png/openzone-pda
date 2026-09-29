@@ -21,6 +21,17 @@ class OZ_PdaPageNews : OZ_PdaPage
     private string m_Next  = "";
     private bool   m_Busy  = false;
 
+    // ОДИН "list" У ДОРОЗІ. Відповідь не каже, на який курсор вона: перша
+    // сторінка, що приїхала, поки чекали «ЩЕ», докладалась як продовження
+    // (верх стрічки вдруге, під тими самими рядками), а «ЩЕ», що приїхала
+    // слідом, ЗАМІНЯЛА всю стрічку старшою сторінкою. Тому поки запит у
+    // дорозі, новий не йде: «ЩЕ» мовчить, а «з початку» (пуш, допис,
+    // повернення на вкладку) лише ставить m_Again і йде, щойно відповідь
+    // (чи відмова) приїхала. Тоді кожна відповідь -- на той єдиний запит,
+    // про який сторінка знає.
+    private bool   m_Asking = false;
+    private bool   m_Again  = false;
+
     // Перо лідера.
     private Widget m_Compose;
     private Widget m_BtnWrite;
@@ -60,10 +71,9 @@ class OZ_PdaPageNews : OZ_PdaPage
     {
         ClearHintHold();
         // З початку стрічки: сторінка відкрилась заново, і сторінки, набрані
-        // минулого разу, до неї не належать.
-        m_Next = "";
-        m_Busy = false;
-        AskPage("");
+        // минулого разу, до неї не належать. Через Restart, а не навпростець:
+        // «ЩЕ», пущене до того, як вкладку перемкнули, ще може бути в дорозі.
+        Restart();
 
         // Хто я для новин -- питаємо щоразу: грант могли зняти, поки сторінка
         // була закрита (приймання 5.9), і кнопка мусить зникнути разом із ним.
@@ -75,6 +85,21 @@ class OZ_PdaPageNews : OZ_PdaPage
         super.OnDeselected();
         if (m_Compose)
             m_Compose.Show(false);
+    }
+
+    // ДЕМОНТАЖ СТОРІНКИ: меню зносить сторінки, коли закривається чи
+    // перебудовує стрічку вкладок. Рядки стрічки зареєстровані на СИНГЛТОНІ
+    // WidgetEventHandler (Repaint), а база знімає лише корінь -- рядки гинуть
+    // разом із ним, а записи обробника лишались би з мертвими ключами (той
+    // клас помилок уже коштував нам краху клієнта). Спершу відписка, потім
+    // корінь.
+    override void Unlink()
+    {
+        // Сторінка без розкладки OnBuilt не бачила, і масиву рядків немає.
+        if (m_RowWgts)
+            DropRows();
+
+        super.Unlink();
     }
 
     override bool OnPageClick(Widget w, int x, int y)
@@ -122,8 +147,9 @@ class OZ_PdaPageNews : OZ_PdaPage
         {
             // Один запит на натискання: поки сторінка не приїхала, кнопка
             // каже це й нічого не шле -- інакше три кліки дали б три однакові
-            // сторінки, вставлені тричі.
-            if (m_Busy || m_Next == "")
+            // сторінки, вставлені тричі. І не поперек першої сторінки, що
+            // ще в дорозі (m_Asking): її відповідь сприйнялась би як ця.
+            if (m_Asking || m_Next == "")
                 return true;
             m_Busy = true;
             SetText("BtnMoreText", "#STR_OZ_CHAT_LOADING");
@@ -187,6 +213,7 @@ class OZ_PdaPageNews : OZ_PdaPage
         if (!JsonFileLoader<OZ_NewsAskList>.MakeData(a, json, err, false))
             return;
 
+        m_Asking = true;
         OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "list", json);
 
         // Хто я для новин -- питаємо разом зі стрічкою лише на першій
@@ -194,6 +221,37 @@ class OZ_PdaPageNews : OZ_PdaPage
         // (приймання 5.9), але «ще» про права нічого не змінює.
         if (cursor == "")
             OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "voices", "{}");
+    }
+
+    // Стрічку -- з початку. Поки "list" у дорозі, лише запам'ятовуємо (див.
+    // m_Asking): перша сторінка піде, щойно та відповідь приїде.
+    private void Restart()
+    {
+        if (m_Asking)
+        {
+            m_Again = true;
+            return;
+        }
+
+        m_Next = "";
+        AskPage("");
+    }
+
+    // "list" приїхав -- відповіддю, нечитним тілом чи відмовою. Дорога
+    // вільна, кнопка «ЩЕ» знову каже своє, і відкладене «з початку» йде
+    // тепер. Кличеться ПІСЛЯ того, як відповідь розібрано: чи це була «ЩЕ»,
+    // m_Busy каже лише до цього рядка.
+    private void ListLanded()
+    {
+        m_Asking = false;
+        m_Busy = false;
+        SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
+
+        if (m_Again)
+        {
+            m_Again = false;
+            Restart();
+        }
     }
 
     override void OnResponse(string op, bool ok, string json, string error)
@@ -210,10 +268,7 @@ class OZ_PdaPageNews : OZ_PdaPage
             }
 
             if (op == "list")
-            {
-                m_Busy = false;
-                SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
-            }
+                ListLanded();
 
             // ВІДМОВА «НЕ ТВОЯ ПЕРСОНА» НЕСЕ ПЕРЕЛІК (ТЗ-6 R1.3, приймання
             // 5.3). Сказати лідерові, що ім'я не його, і не сказати, які
@@ -303,17 +358,19 @@ class OZ_PdaPageNews : OZ_PdaPage
                 be.SetText("");
 
             SetHint("NewsHint", "#STR_OZ_NEWS_POSTED");
-            m_Next = "";
-            AskPage("");
+            Restart();
             return;
         }
 
         if (op == "push")
         {
             // Свіжий пост -- перечитуємо перелік З ПОЧАТКУ: він лягає
-            // зверху, і сторінки, набрані до нього, посунулись.
-            m_Next = "";
-            AskPage("");
+            // зверху, і сторінки, набрані до нього, посунулись. Через
+            // Restart: пуш, що впав посеред «ЩЕ», чекає на її відповідь.
+            //
+            // Прапорець ToHud у конверті -- справа худа (тост лише надітому
+            // приладу); сторінці байдуже, звідки пуш, -- стрічка змінилась.
+            Restart();
             return;
         }
 
@@ -322,8 +379,7 @@ class OZ_PdaPageNews : OZ_PdaPage
             OZ_NewsList l = new OZ_NewsList();
             if (!JsonFileLoader<OZ_NewsList>.LoadData(json, l, err) || !l)
             {
-                m_Busy = false;
-                SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
+                ListLanded();
                 return;
             }
 
@@ -351,8 +407,7 @@ class OZ_PdaPageNews : OZ_PdaPage
             }
 
             m_Next = page.Next;
-            m_Busy = false;
-            SetText("BtnMoreText", "#STR_OZ_NEWS_MORE");
+            ListLanded();
 
             Repaint();
             return;
@@ -362,6 +417,13 @@ class OZ_PdaPageNews : OZ_PdaPage
         {
             OZ_NewsView v = new OZ_NewsView();
             if (!JsonFileLoader<OZ_NewsView>.LoadData(json, v, err) || !v)
+                return;
+
+            // ВІДПОВІДЬ ПРО ІНШИЙ ДОПИС -- не наша. Кеш ядра відповідає
+            // одразу, а свіжий запит іде через міст, тож порядок відповідей не
+            // гарантований: пізня відповідь про A лягала під виділення B, і
+            // гравець читав під одним заголовком у списку текст іншого.
+            if (v.Id != m_OpenId)
                 return;
 
             // Знімаємо все до першої склейки: SetText і Day() виділяють.
@@ -436,9 +498,14 @@ class OZ_PdaPageNews : OZ_PdaPage
         EditBoxWidget te = EditBoxWidget.Cast(Wgt("CmpTitle"));
         if (te)
             title = te.GetText();
+        // Не сирий GetText: поле вдруковує в сам рядок \n на кожному
+        // ВІЗУАЛЬНОМУ переносі, і в опублікований допис вони лягали
+        // розривами посеред слів. OZ_Unwrap лишає тільки Enter-и людини --
+        // той самий хід, що в записках; WrapRuler -- невидима лінійка тим
+        // самим шрифтом, що й поле (розкладка сторінки).
         MultilineEditBoxWidget be = MultilineEditBoxWidget.Cast(Wgt("CmpBody"));
         if (be)
-            be.GetText(body);
+            body = OZ_Unwrap.Read(be, TextWidget.Cast(Wgt("WrapRuler")));
 
         // Порожнє відхиляємо на місці: сервер відповів би тим самим, але за
         // круг, і гравець чекав би на те, що бачить сам.
@@ -470,20 +537,26 @@ class OZ_PdaPageNews : OZ_PdaPage
         OZ_Rpc.Request(OZ_PdaConst.PAGE_NEWS, "post", json);
     }
 
-    private void Repaint()
+    // Зняти рядки стрічки -- разом з їхньою реєстрацією на синглтоні.
+    private void DropRows()
     {
         for (int r = 0; r < m_RowWgts.Count(); r++)
         {
             if (m_RowWgts[r])
             {
-                // The press handler was registered on the singleton in the
-                // loop below: dropping the row without dropping the entry
+                // The press handler was registered on the singleton in
+                // Repaint: dropping the row without dropping the entry
                 // leaves a stale widget key in the handler's map.
                 WidgetEventHandler.GetInstance().UnregisterWidget(m_RowWgts[r]);
                 m_RowWgts[r].Unlink();
             }
         }
         m_RowWgts.Clear();
+    }
+
+    private void Repaint()
+    {
+        DropRows();
 
         // The spacer measures itself only on Update(): rows added or removed
         // without it keep the old height until the next relayout.

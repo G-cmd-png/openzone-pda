@@ -328,6 +328,20 @@ class OZ_PdaHud
             return;
         }
 
+        // КАПСУЛА Й НЕІНІЦІЙОВАНИЙ ПРИЛАД ТЕЖ НЕ ЗНАЮТЬ «ДЕ Я» (ТЗ-4 R-B1.1).
+        //
+        // Живої сесії клієнт не бачив ніяк, і надіта капсула з GPS малювала
+        // гравця посередині так само, як живий прилад, -- а сторінка карти
+        // тієї самої капсули «ти тут» не показує. Тепер це синхронний біт
+        // (OZ_PDA_Base.m_LiveS), той самий прийом, що з GPS угорі: худ і далі
+        // нічого не питає в сервера. Ховається вся панель -- з тієї ж причини.
+        if (!pda.OZ_IsLiveForViewer())
+        {
+            s_Mini.Show(false);
+            s_MiniDrawn = false;
+            return;
+        }
+
         PlayerBase p = PlayerBase.Cast(GetGame().GetPlayer());
         if (!p)
         {
@@ -339,6 +353,16 @@ class OZ_PdaHud
         s_Mini.Show(true);
 
         vector at = p.GetPosition();
+
+        // ЦЕНТР -- ЩОТАКТУ, ПОЗА ВАРТОЮ НИЖЧЕ.
+        //
+        // SetMapPos у тому самому такті, де панель щойно показали, лягає не
+        // туди: зміряно на стенді 2026-09-28 -- надітий КПК отримав GPS,
+        // панель з'явилась, і мінікарта стала за ~600 м від гравця. Варта
+        // нижче перемальовує лише після зсуву на метр, тож гравець, що стоїть,
+        // дивився на чужий квадрат, доки не рушив. Позиція -- одна дешева
+        // операція раз на такт; мітки й далі кладуться лише за вартою.
+        s_MiniMap.SetMapPos(at);
 
         // МЕТР -- ЦЕ ЦІНА ОДНОГО ПІКСЕЛЯ І ОДНОЇ ЦИФРИ.
         //
@@ -356,7 +380,6 @@ class OZ_PdaHud
         s_MiniWhat  = what;
         s_MiniDrawn = true;
 
-        s_MiniMap.SetMapPos(at);
         s_MiniMap.ClearUserMarks();
         s_MiniMap.AddUserMark(at, "", OZ_PdaConst.MARK_SELF, ICON_SELF);
 
@@ -442,6 +465,16 @@ class OZ_PdaHud
             if (!np.Fresh)
                 return;
 
+            // ТОСТ -- ЛИШЕ НАДІТОМУ (ТЗ-5 R-B1.1). ToHud=false означає, що
+            // надітого немає або він вимкнений і пост почув лише прилад у
+            // руках: його сторінка скине по конверту кеш, а худ, який малює
+            // надітий, мовчить. ToHud ставить сервер (OZ_NewsSink).
+            if (!np.ToHud)
+            {
+                OZ_Log.Dbg("hud: news push is for the device in hands - no toast");
+                return;
+            }
+
             // Знімаємо обидва рядки ДО Ensure(): він будує ціле дерево
             // віджетів, а конверт виділив серіалізатор.
             string nwho   = np.Who;
@@ -488,29 +521,16 @@ class OZ_PdaHud
             return;
         }
 
-        // Стан карти: забираємо маячки для мінікарти, коли сторінка карти
-        // відкрита і сама спитала. Відповідь одна на всіх.
-        if (pageId == OZ_PdaConst.PAGE_MAP && op == "state" && ok)
-        {
-            OZ_MapState ms = new OZ_MapState();
-            string merr;
-            if (JsonFileLoader<OZ_MapState>.LoadData(json, ms, merr) && ms)
-            {
-                if (!s_Beacons)
-                    s_Beacons = new array<ref OZ_MapBeacon>();
-                s_Beacons.Clear();
-                if (ms.Beacons)
-                {
-                    for (int bi = 0; bi < ms.Beacons.Count(); bi++)
-                    {
-                        if (ms.Beacons[bi])
-                            s_Beacons.Insert(ms.Beacons[bi].Copy());
-                    }
-                }
-                s_BeaconSeq++;
-            }
-            return;
-        }
+        // ВІДПОВІДІ state СТОРІНКИ КАРТИ ХУД БІЛЬШЕ НЕ БЕРЕ.
+        //
+        // Тут він переписував з неї свої маячки -- а state говорить про
+        // прилад ЕКРАНА, спершу про той, що в руках (рішення власника
+        // 2026-09-08), тоді як мінікарта малює надітий (ТЗ-5 R-B1.5: правил
+        // два). КПК без GPS у руці спорожняв мінікарту надітого, шпигунський
+        // -- вливав у неї кожен транспондер. І підпис посилки
+        // (OZ_PdaHandlerMap.PushBeaconsNow) про state не знає: маячок, що
+        // приїхав лише станом, наступна така сама посилка не прибирала
+        // ніколи. Маячки мінікарти -- рівно остання посилка beacons, і все.
 
         if (pageId != OZ_PdaConst.PAGE_CHAT || op != "line" || !ok)
             return;
@@ -525,6 +545,17 @@ class OZ_PdaHud
         if (p.Mine)
             return;
 
+        // ТОСТ -- ЛИШЕ З КОНВЕРТА ДЛЯ НАДІТОГО (ТЗ-5 R-B1.1). Сервер шле
+        // рядок окремо на кожну роль приладу: ToHud=true -- надітому, ToHud=false
+        // -- тому, що в руках, і той рядок лише для екрана чату. Без цієї
+        // перевірки живий чужий КПК у руках лив особисті рядки свого власника
+        // тостами в худ надітого.
+        if (!p.ToHud)
+        {
+            OZ_Log.Dbg("hud: chat line is for the device in hands - no toast");
+            return;
+        }
+
         // Усе з конверта -- ДО Ensure(): він будує дерево віджетів, а далі
         // йдуть склейки й переклади, і кожне з цього -- виділення.
         string pkind  = p.Kind;
@@ -532,30 +563,53 @@ class OZ_PdaHud
         string pwho   = p.Who;
         string ptext  = p.Text;
         int    pcolor = p.WhoColor;
+        bool   panon  = p.Anon;
+
+        // ХТО ПИШЕ -- мовою ГЛЯДАЧА. Анонімному рядку Зони ім'я малює клієнт
+        // сам, і Who не показуємо ніколи: там те, що поставив міст, його
+        // мовою. Порожнє Who -- міст імені не знає; раніше там стояв сирий
+        // Steam64, тепер порожнеча, і її теж називаємо словами.
+        string who = pwho;
+        if (panon)
+            who = Widget.TranslateString("#STR_OZ_CHAT_ANON_WHO");
+        else if (who == "")
+            who = Widget.TranslateString("#STR_OZ_CONTACT_NONAME");
+
+        // ЗВІДКИ прийшло -- прямо в заголовку: група на ім'я, пейджер,
+        // Зона, запрошення чи особисте.
+        //
+        // ЗАПРОШЕННЯ СКЛАДАЄМО З НАЗВИ ГРУПИ, а Text не показуємо зовсім: там
+        // готове українське речення для старих клієнтів, і гравець з іншою
+        // мовою отримав би його як є. Заголовок каже «запрошення» й від
+        // кого, рядок під ним -- куди саме.
+        string chan = "#STR_OZ_TOAST_DM";
+        string body = ptext;
+        if (pkind == "group")
+            chan = ptitle;
+        else if (pkind == "npc")
+            chan = "#STR_OZ_CHAT_PAGER";
+        else if (pkind == "zone")
+            chan = "#STR_OZ_CHAT_ZONE";
+        else if (pkind == "invite")
+        {
+            chan = "#STR_OZ_TOAST_INVITE";
+            body = ptitle;
+        }
 
         Ensure();
         if (s_ToastWho)
         {
-            // ЗВІДКИ прийшло -- прямо в заголовку: група на ім'я, пейджер,
-            // Зона чи особисте. Хто пише -- фарбується фракцією.
-            string chan = "#STR_OZ_TOAST_DM";
-            if (pkind == "group")
-                chan = ptitle;
-            else if (pkind == "npc")
-                chan = "#STR_OZ_CHAT_PAGER";
-            else if (pkind == "zone")
-                chan = "#STR_OZ_CHAT_ZONE";
-
-            s_ToastWho.SetText(pwho + "   [" + Widget.TranslateString(chan) + "]");
+            // Хто пише -- фарбується фракцією.
+            s_ToastWho.SetText(who + "   [" + Widget.TranslateString(chan) + "]");
             if (pcolor != 0)
                 s_ToastWho.SetColor(pcolor);
             else
                 s_ToastWho.SetColor(OZ_Palette.ACCENT);
         }
         if (s_ToastText)
-            s_ToastText.SetText(ptext);
+            s_ToastText.SetText(body);
         s_ToastUntil = GetGame().GetTime() + s_ToastHoldMs;
-        OZ_Log.Dbg("hud: toast armed until=" + s_ToastUntil.ToString() + " who=" + p.Who);
+        OZ_Log.Dbg("hud: toast armed until=" + s_ToastUntil.ToString() + " kind=" + pkind + " who=" + who);
     }
 
     // Той самий пристрій, про який говорить сервер, коли йдеться про
@@ -756,7 +810,14 @@ class OZ_PdaHud
 
         // Прапорці ванільного інтерфейсу. IngameHud.Cast -- саме так до них
         // ходить і сама ваниль (gesturesmenu.c:228, continuousactionprogress.c:60).
-        IngameHud hud = IngameHud.Cast(GetGame().GetMission().GetHud());
+        //
+        // Місію -- у локальну й перевірити: ланцюжок GetMission().GetHud()
+        // без вартового ядро вже бачило падінням клієнта (OZ_LinkMenu), а
+        // цей рядок крутиться щокадру, зокрема й на виході з місії.
+        Mission mission = GetGame().GetMission();
+        if (!mission)
+            return "no mission";
+        IngameHud hud = IngameHud.Cast(mission.GetHud());
         if (hud)
         {
             IngameHudVisibility vis = hud.GetHudVisibility();

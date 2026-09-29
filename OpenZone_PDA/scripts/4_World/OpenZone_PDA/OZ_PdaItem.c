@@ -37,6 +37,14 @@ class OZ_PDA_Base : ItemBase
     // конвеєра таблиці: питання рівно одне -- знає прилад, де він, чи ні.
     private bool  m_HasGpsS  = false;
 
+    // Дзеркало «прилад говорить за живу сесію» для КЛІЄНТА: є власник і
+    // прилад не став капсулою. Худ малює мінікарту з гравцем посередині, а
+    // капсула живої позиції не показує (ТЗ-4 R-B1.1) -- і неініційований
+    // прилад теж, бо в нього не працює жодна сторінка, крім самого приладу.
+    // Заморозку знає лише сервер (епоха власника лежить у його файлі), тож
+    // тут той самий прийом, що й у m_HasGpsS: один біт замість запиту.
+    private bool  m_LiveS    = false;
+
     // --- замок ---
     private string m_Pin        = "";     // порожній рядок = коду немає
     private bool   m_Unlocked   = false;  // стан ПРИСТРОЮ, не гравця
@@ -156,12 +164,9 @@ class OZ_PDA_Base : ItemBase
     // Мить попереднього спрацювання, GetGame().GetTime() у мс.
     private int m_LastTickMs = 0;
 
-    // --- лічильник невдалих спроб ---
-    private ref array<string> m_FailUid;
-    private ref array<int>    m_FailCount;
-    // Мить ОСТАННЬОЇ невдачі: від неї рахується вікно блокування.
-    private ref array<int>    m_FailAt;
-
+    // --- лічильник невдалих спроб -- НЕ ТУТ, а в OZ_PinFails (кінець файлу):
+    // екземпляр предмета не переживає перезаходу гравця.
+    //
     // Межі -- з Tuning.json (OZ_PdaTune.PinMaxFails / PinLockoutMs).
 
     void OZ_PDA_Base()
@@ -173,12 +178,9 @@ class OZ_PDA_Base : ItemBase
         RegisterNetSyncVariableBool("m_Unlocked");
         RegisterNetSyncVariableBool("m_HasPinS");
         RegisterNetSyncVariableBool("m_HasGpsS");
+        RegisterNetSyncVariableBool("m_LiveS");
 
         m_Store     = new OZ_SectionStore();
-
-        m_FailUid   = new array<string>();
-        m_FailCount = new array<int>();
-        m_FailAt    = new array<int>();
 
         m_ModuleAcc = new array<float>();
         for (int i = 0; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
@@ -246,8 +248,12 @@ class OZ_PDA_Base : ItemBase
 
         m_ModuleAcc[idx] = 0;
 
+        // ПОВЕДІНКУ БУДИМО ЛИШЕ В РОБОЧОМУ ВІДСІКУ. Схований відсік вимкнений
+        // (ТЗ-4 R-F2.1, OZ_ModuleSeat), а OnAttached кликався для будь-якого:
+        // плата рації в схованому відсіку прокидалась і приймала ефір на
+        // приладі, тир якого цього відсіку не дає.
         OZ_ModuleBehaviour b = OZ_PdaModules.ForClass(item.GetType());
-        if (b)
+        if (b && idx < OZ_PdaProfiles.ModuleSlotsOf(GetType()))
             b.OnAttached(this, idx);
 
         // Набір модулів змінився -- період теж міг: детектор на пів секунди
@@ -269,9 +275,11 @@ class OZ_PDA_Base : ItemBase
             return;
 
         // Гасить свої звуки й ефекти мусить сам модуль: КПК за чужим кодом
-        // не прибирає й не може знати, що той завів.
+        // не прибирає й не може знати, що той завів. Пара до OnAttached --
+        // той самий фільтр робочого відсіку: хто не прокидався, тому й
+        // гасити нічого.
         OZ_ModuleBehaviour b = OZ_PdaModules.ForClass(item.GetType());
-        if (b)
+        if (b && idx < OZ_PdaProfiles.ModuleSlotsOf(GetType()))
             b.OnDetached(this, idx);
 
         // Вийняли останній тікаючий модуль -- таймер СТАЄ, а не крутиться
@@ -467,6 +475,20 @@ class OZ_PDA_Base : ItemBase
         // плата жила б до наступного вимкнення чи заміни батареї.
         OZ_SyncHardwareBits();
 
+        // І ВИТРАТА -- З ТІЄЇ Ж ПРИЧИНИ. Плата, що згоріла на місці, не
+        // проходить ні attach, ні detach, а OZ_ApplyDrain жив лише там: мертвий
+        // дешифратор чи вичерпана шпигунська плата далі множили витрату своїм
+        // PowerFactor до наступного вимикання. Підпис набору робочих плат --
+        // три рядки на тік; перераховуємо лише коли він справді інший.
+        string boards = "";
+        for (int bs = 0; bs < OZ_PdaConst.MODULE_SLOTS_MAX; bs++)
+            boards += OZ_ModuleClass(bs) + "|";
+        if (boards != m_BoardSig)
+        {
+            m_BoardSig = boards;
+            OZ_ApplyDrain();
+        }
+
         // ЧАС МІРЯЄМО ГОДИННИКОМ, А НЕ ПЕРІОДОМ ТАЙМЕРА.
         //
         // Накопичувач додавав ОГОЛОШЕНИЙ період, тобто вірив, що таймер
@@ -508,9 +530,19 @@ class OZ_PDA_Base : ItemBase
 
             float dt = m_ModuleAcc[i];
             m_ModuleAcc[i] = 0;
-            b.OnTick(this, owner, dt);
+
+            // ПО ВІДСІКУ, А НЕ ПО ПРИЛАДУ. Поведінка одна на вид, і коли дві
+            // шпигунські плати стояли поруч, кожен їхній відсік кликав OnTick,
+            // а той списував ресурс УСІМ платам приладу -- дві горіли вдвічі
+            // швидше, три -- втричі. OnTickSlot називає відсік; за
+            // замовчуванням він кличе старий OnTick, тож чужі поведінки (рація)
+            // працюють як працювали.
+            b.OnTickSlot(this, owner, dt, i);
         }
     }
+
+    // Набір робочих плат, як його бачив попередній тік (див. ModuleTick).
+    private string m_BoardSig = "";
 
     override void OnVariablesSynchronized()
     {
@@ -540,7 +572,17 @@ class OZ_PDA_Base : ItemBase
         if (!GetGame().IsServer())
             return;
 
-        if (!m_Unlocked || !m_AutoLock || m_Pin == "")
+        // ПРИМУС АДМІНА ДІЄ НА ВСІ ПРИЛАДИ, а не лише на ті, чий власник
+        // натисне перемикач уже після нього. ForceAutoLock досі питали рівно
+        // в одному місці -- коли гравець перемикає автоблокування, -- тож
+        // прилад, на якому його вимкнули ДО рішення адміна, не замикався
+        // ніколи, а кнопку увімкнути назад клієнт при примусі ховає.
+        bool autoLock = m_AutoLock;
+        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
+        if (prof && prof.ForceAutoLock)
+            autoLock = true;
+
+        if (!m_Unlocked || !autoLock || m_Pin == "")
             return;
 
         if (m_LeftHandsAt == 0)   // досі в руках -- відлік не почався
@@ -589,6 +631,15 @@ class OZ_PDA_Base : ItemBase
             return true;
         }
 
+        // ПЕЧАТКУ ЗНІМАЄ ЛИШЕ ДЕШИФРАТОР (див. OZ_PdaProfile.Sealed), а код
+        // запечатаного приладу набирати не має сенсу: його ніхто не знає. Але
+        // сервер спроби ПРИЙМАВ -- п'ять на п'ять хвилин на гравця, лічильник
+        // у пам'яті й до рестарту, -- тож чотири цифри перебирались за кілька
+        // днів аптайму або годин гуртом, і квестовий прилад відкривався без
+        // плати, заради якої його зроблено.
+        if (OZ_IsSealed())
+            return false;
+
         if (OZ_IsLockedOut(uid))
             return false;
 
@@ -614,7 +665,8 @@ class OZ_PDA_Base : ItemBase
 
     bool OZ_IsLockedOut(string uid)
     {
-        if (OZ_FailsFor(uid) < OZ_PdaTune.PinMaxFails())
+        string key = FailKey(uid);
+        if (OZ_PinFails.Count(key) < OZ_PdaTune.PinMaxFails())
             return false;
 
         // Вікно блокування: сплило -- лічильник прощається сам. Нуль у
@@ -623,20 +675,23 @@ class OZ_PDA_Base : ItemBase
         if (windowMs <= 0)
             return true;
 
-        int i = m_FailUid.Find(uid);
-        if (i == -1)
-            return false;
-
-        if (GetGame().GetTime() - m_FailAt[i] >= windowMs)
+        if (GetGame().GetTime() - OZ_PinFails.LastAt(key) >= windowMs)
         {
-            ResetFails(uid);
+            OZ_PinFails.Forget(key);
             return false;
         }
         return true;
     }
 
-    // Скільки секунд лишилось до кінця блокування. 0 -- не заблоковано або
-    // блок до рестарту (тоді чесно нема чого рахувати).
+    // Скільки секунд лишилось до кінця блокування, З ОКРУГЛЕННЯМ УГОРУ. 0 --
+    // не заблоковано або блок до рестарту (тоді чесно нема чого рахувати).
+    //
+    // Угору, бо клієнт ставить дедлайн рівно на це число (OZ_PdaMenu
+    // .ArmLockout), і його нуль не може наставати раніше за нуль сервера.
+    // Раніше тут різали вниз, а секунду назад додавав клієнт -- і свіже
+    // блокування на 300 с показувало «301 s» (виміряно 2026-09-29): відповідь
+    // рахується в тому ж кадрі, що й п'ята хибна спроба, тож лишок рівно
+    // 300 000 мс, униз -- 300, і ще секунда зверху.
     int OZ_LockWaitSec(string uid)
     {
         if (!OZ_IsLockedOut(uid))
@@ -646,22 +701,22 @@ class OZ_PDA_Base : ItemBase
         if (windowMs <= 0)
             return 0;
 
-        int i = m_FailUid.Find(uid);
-        if (i == -1)
-            return 0;
-
-        int left = m_FailAt[i] + windowMs - GetGame().GetTime();
+        int left = OZ_PinFails.LastAt(FailKey(uid)) + windowMs - GetGame().GetTime();
         if (left < 0)
             left = 0;
-        return left / 1000;
+        return (left + 999) / 1000;
     }
 
     int OZ_FailsFor(string uid)
     {
-        int i = m_FailUid.Find(uid);
-        if (i == -1)
-            return 0;
-        return m_FailCount[i];
+        return OZ_PinFails.Count(FailKey(uid));
+    }
+
+    // ЧИЙ ЛІЧИЛЬНИК: «хто набирає | чий прилад». Чому саме ця пара, а не
+    // хтось один із двох, -- у шапці OZ_PinFails.
+    private string FailKey(string uid)
+    {
+        return uid + "|" + m_SessionUid;
     }
 
     // ------------------------------------------------------ запечатаний КПК
@@ -789,6 +844,11 @@ class OZ_PDA_Base : ItemBase
             {
                 burnt.SetHealth("", "", 0);
                 OZ_Log.Info("pda: decryptor burnt out on " + GetType());
+
+                // Мертва плата не їсть: множник її PowerFactor знімаємо
+                // одразу, а не при наступному вимиканні (ТЗ-5 R-B2.2).
+                OZ_ApplyDrain();
+                OZ_SyncHardwareBits();
             }
             break;
         }
@@ -1055,6 +1115,29 @@ class OZ_PDA_Base : ItemBase
             return;
         m_SessionUid   = uid;
         m_SessionEpoch = playerEpoch;
+
+        // Щойно відкрита сесія -- жива за визначенням: епоха та сама, що в
+        // гравця. Далі біт звіряє пуш маячків (OZ_PdaHandlerMap).
+        OZ_SetLiveBit(uid != "");
+    }
+
+    // Дзеркало «жива сесія» (див. m_LiveS). SetSynchDirty -- лише на зміну:
+    // сервер звіряє біт кожні кілька секунд на кожному надітому приладі.
+    void OZ_SetLiveBit(bool live)
+    {
+        if (!GetGame().IsServer())
+            return;
+        if (live == m_LiveS)
+            return;
+
+        m_LiveS = live;
+        SetSynchDirty();
+    }
+
+    // Клієнтська правда про те, чи прилад говорить за живу сесію.
+    bool OZ_IsLiveForViewer()
+    {
+        return m_LiveS;
     }
 
     // -------------------------------------------------------------- знімок
@@ -1142,6 +1225,7 @@ class OZ_PDA_Base : ItemBase
         m_Snapshot     = "";
         m_SnapshotAt   = "";
         m_SnapSig      = "";
+        m_LiveS        = false;
 
         m_MarkersJson = "";
         m_NotesJson   = "";
@@ -1150,15 +1234,11 @@ class OZ_PDA_Base : ItemBase
         m_OwnCells    = -1;
         m_CrackUntil  = 0;
 
-        // ВСІ ТРИ, а не два з трьох.
-        //
-        // Масиви паралельні: один і той самий індекс означає uid, лічильник і
-        // час. Очищення двох лишало третій довшим, і перший же новий промах
-        // після скидання зсовував їх назавжди -- m_FailAt[i] починав читати
-        // час ЧУЖОГО запису, тобто вікно блокування питали не в того.
-        m_FailUid.Clear();
-        m_FailCount.Clear();
-        m_FailAt.Clear();
+        // Лічильник невдач тут НЕ чиститься: він живе в OZ_PinFails під
+        // ключем «хто набирає | власник», а власника скидання щойно стерло.
+        // Новий власник почне з чистого рядка; той самий, ініціювавши прилад
+        // знову, отримає свій старий -- так само, як на будь-якому іншому
+        // своєму приладі.
 
         // Заводські пресети -- заново: скинутий профільний прилад знову
         // несе свою фабричну начинку.
@@ -1221,9 +1301,30 @@ class OZ_PDA_Base : ItemBase
         return OZ_PdaConst.PIN_LENGTH_DEFAULT;
     }
 
+    // СКІЛЬКИ ЦИФР У КОДІ, ЩО ВЖЕ СТОЇТЬ -- для пада, яким його набирають.
+    //
+    // OZ_PinLength -- правило для НОВОГО коду, і воно може змінитись після
+    // того, як код поставили: адмін зменшив PinLength профілю з шести до
+    // чотирьох, а на приладах лишились шестизначні коди. Пад досі брав
+    // довжину з профілю, приймав чотири цифри й ніколи -- шосту, тобто
+    // власник більше не міг відімкнути свій прилад нічим, крім скидання з
+    // утратою всього. Довжина коду -- не секрет: крапки пада її й так
+    // показують, а скільки -- видно з профілю моделі.
+    int OZ_UnlockPinLength()
+    {
+        if (m_Pin != "")
+            return m_Pin.Length();
+        return OZ_PinLength();
+    }
+
     bool OZ_SetPin(string uid, string oldPin, string newPin)
     {
         if (!GetGame().IsServer())
+            return false;
+
+        // Та сама печатка, що й у OZ_TryUnlock: «зміна коду» звіряє СТАРИЙ
+        // код і тим самим була б другими дверима для перебору.
+        if (OZ_IsSealed())
             return false;
 
         if (!PinShaped(newPin))
@@ -1271,34 +1372,12 @@ class OZ_PDA_Base : ItemBase
 
     private void BumpFails(string uid)
     {
-        int i = m_FailUid.Find(uid);
-        if (i == -1)
-        {
-            m_FailUid.Insert(uid);
-            m_FailCount.Insert(1);
-            m_FailAt.Insert(GetGame().GetTime());
-            return;
-        }
-        m_FailCount[i] = m_FailCount[i] + 1;
-        m_FailAt[i]    = GetGame().GetTime();
+        OZ_PinFails.Bump(FailKey(uid));
     }
 
-    // РЯДОК ЗНИКАЄ ЦІЛКОМ, а не обнуляється.
-    //
-    // Обнулений лічильник читається так само, як відсутній запис (OZ_FailsFor
-    // на невідомому uid віддає нуль), а три паралельні масиви росли назавжди:
-    // кожен, хто хоч раз помилився кодом, лишався в предметі до кінця його
-    // життя. ВСІ ТРИ й тим самим індексом -- вони паралельні, і зняти два з
-    // трьох означало б зсунути час чужого запису (див. OZ_FactoryReset).
     private void ResetFails(string uid)
     {
-        int i = m_FailUid.Find(uid);
-        if (i == -1)
-            return;
-
-        m_FailUid.Remove(i);
-        m_FailCount.Remove(i);
-        m_FailAt.Remove(i);
+        OZ_PinFails.Forget(FailKey(uid));
     }
 
     // Відлік автоблокування починається, коли пристрій пішов З РУК.
@@ -1310,9 +1389,23 @@ class OZ_PDA_Base : ItemBase
             return;
 
         if (newLoc.GetType() == InventoryLocationType.HANDS)
+        {
+            // СПЕРШУ РАХУНОК, ПОТІМ СКИДАННЯ. Замок лінивий -- його рахують
+            // ворота на запит і пуш маячків на приладі гравця в онлайні, -- а
+            // прилад, що пролежав пів години в рюкзаку чи на трупі, не
+            // бачить жоден із них. Скидання відліку при взятті в руки стирало
+            // ці пів години ДО того, як хтось їх порівняв із межею: мародер
+            // перетягував розімкнений КПК із рюкзака вбитого просто в руки й
+            // отримував живу сесію власника.
+            OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
+            if (prof)
+                OZ_EvaluateLock(prof.LockAfterMinutes);
             m_LeftHandsAt = 0;
+        }
         else if (oldLoc.GetType() == InventoryLocationType.HANDS)
+        {
             m_LeftHandsAt = GetGame().GetTime();
+        }
     }
 
     // ------------------------------------------------------------- залізо
@@ -1342,10 +1435,13 @@ class OZ_PDA_Base : ItemBase
     // підписати вигорілу (ТЗ-5 R-B2.9), тобто повз відповідь «нічого не
     // працює». Читаючи гніздо повз ці двері, він возив клієнту вміст
     // схованого відсіку -- назву, вид і залишок ресурсу.
+    //
+    // Число відсіків -- з OZ_PdaProfiles.ModuleSlotsOf, тобто з ОБОХ боків:
+    // на клієнті профілів немає, і він питав порожнечу, отримуючи «усі
+    // відсіки робочі».
     EntityAI OZ_ModuleSeat(int i)
     {
-        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
-        if (prof && i >= prof.ModuleSlots)
+        if (i >= OZ_PdaProfiles.ModuleSlotsOf(GetType()))
             return null;
 
         return OZ_AttachedId(OZ_PdaSlots.Module(i));
@@ -1387,19 +1483,26 @@ class OZ_PDA_Base : ItemBase
 
     // Ховає відсіки понад те, що дозволяє профіль. Слоти не додаються в
     // рантаймі, тому в конфізі їх максимум, а профіль ріже видиме.
+    //
+    // ПИТАЄ ЦЕ КЛІЄНТ -- інвентар гри (attachments.c) малює гнізда на
+    // клієнті, а профілів там немає. Досі відповідь на клієнті була «усі
+    // три» на будь-якому приладі. Тепер число приходить у пакеті ядра
+    // (OZ_PdaProfiles.ModuleSlotsOf).
+    //
+    // ЗАЙНЯТИЙ схований відсік ЛИШАЄТЬСЯ видимим: плата, яка потрапила туди
+    // раніше (стара збірка, змінений профіль), мусить мати звідки вийти.
+    // Працювати вона однаково не буде -- OZ_ModuleSeat її не віддає, -- а
+    // нову туди не покласти (CanReceiveAttachment).
     override bool CanDisplayAttachmentSlot(int slot_id)
     {
         if (!super.CanDisplayAttachmentSlot(slot_id))
             return false;
 
-        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(GetType());
-        if (!prof)
-            return true;
-
-        for (int i = prof.ModuleSlots; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
+        int slots = OZ_PdaProfiles.ModuleSlotsOf(GetType());
+        for (int i = slots; i < OZ_PdaConst.MODULE_SLOTS_MAX; i++)
         {
             if (slot_id == OZ_PdaSlots.Module(i))
-                return false;
+                return GetInventory().FindAttachment(slot_id) != null;
         }
         return true;
     }
@@ -1453,7 +1556,32 @@ class OZ_PDA_Base : ItemBase
     {
         super.OnWork(consumed_energy);
         if (GetGame().IsServer())
+        {
+            OZ_CfgFollow();
             PushState();
+        }
+    }
+
+    // ГАРЯЧЕ ЗАСТОСУВАННЯ ДОХОДИТЬ ДО КОЖНОГО ПРАЦЮЮЧОГО ПРИЛАДУ.
+    //
+    // Витрату рахує OZ_ApplyDrain, а кликали її лише attach, detach і
+    // вмикання: адмін міняв у VPP PowerFactor плати, базу профілю чи число
+    // відсіків -- а кожен уже ввімкнений прилад, у руках, на землі чи в
+    // скрині, їв батарею по-старому до вимикання. OnWork рушій кличе
+    // таймером, поки прилад працює, тож звірка тут наздоганяє всіх; сама
+    // звірка -- одне порівняння чисел. Поколінь два (профілі й залізо), і
+    // обидва лише ростуть: їхня сума міняється з будь-яким перечитуванням.
+    private int m_CfgGen = -1;
+
+    private void OZ_CfgFollow()
+    {
+        int gen = OZ_PdaProfiles.Gen() + OZ_PdaHardware.Gen();
+        if (gen == m_CfgGen)
+            return;
+
+        m_CfgGen = gen;
+        OZ_ApplyDrain();
+        OZ_SyncHardwareBits();
     }
 
     override void OnWorkStart()
@@ -1538,8 +1666,24 @@ class OZ_PDA_Base : ItemBase
         if (!super.CanReceiveAttachment(attachment, slotId))
             return false;
 
+        // СХОВАНИЙ ВІДСІК НЕ ПРИЙМАЄ НІЧОГО -- і відмовляє КЛІЄНТ. Досі
+        // гніздо над профілем брало плату, яка потім мовчки не працювала
+        // (OZ_ModuleSeat): гравець бачив плату на місці й не бачив причини.
+        //
+        // Сервер цього не питає навмисно. Робочим такий відсік не стане й так
+        // (OZ_ModuleSeat, фільтр OnAttached), а серверна відмова зачепила б і
+        // відновлення світу: плата, що лежить у схованому гнізді зі старих
+        // часів, могла б не повернутись на місце після рестарту.
         if (!GetGame().IsServer())
+        {
+            int slots = OZ_PdaProfiles.ModuleSlotsOf(GetType());
+            for (int m = slots; m < OZ_PdaConst.MODULE_SLOTS_MAX; m++)
+            {
+                if (slotId == OZ_PdaSlots.Module(m))
+                    return false;
+            }
             return true;
+        }
 
         if (slotId != OZ_PdaSlots.Battery())
             return true;
@@ -1585,10 +1729,21 @@ class OZ_PDA_Base : ItemBase
         // поглядом -- гравець вимкнув, зачекав без батареї, увімкнув і
         // відкрив за нуль енергії. Перериваємо саме тут, ПОДІЄЮ втрати
         // живлення, а не наступним поглядом.
+        //
+        // ДОБІГЛИЙ ЗЛАМ -- НЕ «ПОСЕРЕДИНІ». Завершення теж ліниве: його
+        // зараховує OZ_EvaluateCrack, коли на прилад дивляться. Злам, що
+        // скінчився, поки меню було закрите, досі чекав погляду -- і перше ж
+        // вимкнення після того стирало його як перерваний. Тож перед
+        // перериванням даємо йому шанс закінчитись: відлік минув -- злам
+        // зараховано, ні -- перервано, як і було.
         if (wasOn && !m_IsOn && m_CrackUntil > 0 && GetGame().IsServer())
         {
-            m_CrackUntil = 0;
-            OZ_Log.Dbg("crack aborted: device lost power mid-crack");
+            OZ_EvaluateCrack();
+            if (m_CrackUntil > 0)
+            {
+                m_CrackUntil = 0;
+                OZ_Log.Dbg("crack aborted: device lost power mid-crack");
+            }
         }
 
         // ПРОКИНУВСЯ ВЖЕ УВІМКНЕНИМ -- теж привід завести тік.
@@ -1740,5 +1895,80 @@ class OZ_PDA_Base : ItemBase
 
         // Обмін контактами -- теж дія, і теж по цілі: наводиш на людину.
         AddAction(OZ_ActionExchangeContacts);
+    }
+}
+
+
+// ЛІЧИЛЬНИК НЕВДАЛИХ СПРОБ ПІНА -- НА СЕРВЕРІ, А НЕ НА ПРЕДМЕТІ.
+//
+// Досі три паралельні масиви лежали полями приладу й жили рівно стільки,
+// скільки жив ЕКЗЕМПЛЯР предмета. А екземпляр живе менше, ніж здається:
+// перезахід видаляє персонажа разом з усім, що на ньому, і наступний вхід
+// збирає все наново з бази (ваніль: PlayerDisconnected -> HandleBody ->
+// Delete). Зміряно на стенді 2026-09-28: п'ять хибних кодів дали «299 с»,
+// клієнт перезайшов -- і правильний код відімкнув прилад за дві хвилини до
+// кінця вікна. Тобто блок перебору знімався звичайним перезаходом.
+//
+// КЛЮЧ -- «хто набирає | чий прилад» (OZ_PDA_Base.FailKey). Не сам
+// набирач: тоді успіх на ВЛАСНОМУ приладі обнуляв би лічильник на
+// краденому, і перебір ішов би по чотири спроби між двома відмиканнями
+// свого. Не сам прилад: стабільного імені в предмета немає, а завести його
+// -- це нова версія сховища. Прилади одного власника ділять лічильник
+// злодія, і це лише суворіше за «кожен окремо».
+//
+// ДО РЕСТАРТУ, як і було задумано (див. OZ_TryUnlock): мапа статична й на
+// диск не пишеться.
+class OZ_PinFailRow
+{
+    int Count;
+    // Мить ОСТАННЬОЇ невдачі: від неї рахується вікно блокування.
+    int At;
+}
+
+class OZ_PinFails
+{
+    private static ref map<string, ref OZ_PinFailRow> s_Rows;
+
+    private static map<string, ref OZ_PinFailRow> Rows()
+    {
+        if (!s_Rows)
+            s_Rows = new map<string, ref OZ_PinFailRow>();
+        return s_Rows;
+    }
+
+    static int Count(string key)
+    {
+        OZ_PinFailRow r;
+        if (!Rows().Find(key, r) || !r)
+            return 0;
+        return r.Count;
+    }
+
+    static int LastAt(string key)
+    {
+        OZ_PinFailRow r;
+        if (!Rows().Find(key, r) || !r)
+            return 0;
+        return r.At;
+    }
+
+    static void Bump(string key)
+    {
+        OZ_PinFailRow r;
+        if (!Rows().Find(key, r) || !r)
+        {
+            r = new OZ_PinFailRow();
+            Rows().Set(key, r);
+        }
+        r.Count = r.Count + 1;
+        r.At = GetGame().GetTime();
+    }
+
+    // РЯДОК ЗНИКАЄ ЦІЛКОМ, а не обнуляється: обнулений читається так само,
+    // як відсутній (Count віддає нуль), а мапа інакше росла б до рестарту.
+    static void Forget(string key)
+    {
+        if (Rows().Contains(key))
+            Rows().Remove(key);
     }
 }

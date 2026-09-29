@@ -94,6 +94,25 @@ class OZ_PdaPageMap : OZ_PdaPage
     // Обрана мітка. Порожньо -- нічого не обрано, і кнопка ставить нову.
     private string m_PickedId = "";
 
+    // МІТКА В ДОРОЗІ -- від відправки marker_add до першого стану, що вже
+    // її знає. Поки вона в дорозі, нова не шлеться (SendAdd).
+    //
+    //   0 -- нічого не летить;
+    //   1 -- marker_add пішов із ЦІЄЇ сторінки, відповіді ще немає;
+    //   2 -- відповідь «так» прийшла, а стану з новою міткою ще немає.
+    //
+    // Подвійний клік по порожній карті -- це два кліки, і другий приходив
+    // раніше, ніж стан приносив першу мітку: MarkerNear її ще не бачив, і
+    // йшло друге додавання -- дві мітки, дві комірки пам'яті. Друга сходинка
+    // не зайва: між відповіддю на додавання і станом, що її показує, лежить
+    // ще одна дорога до сервера й назад. Відповіді йдуть у порядку запитів
+    // (гарантований канал ядра), тож перший стан ПІСЛЯ відповіді вже містить
+    // мітку.
+    //
+    // Сходинка 1 заразом каже, чия відповідь прийшла: поле назви чистить
+    // лише власне додавання (див. OnResponse).
+    private int m_AddStep = 0;
+
     // Ванільні іконки: своя й чужа мітки мусять відрізнятись з першого
     // погляду, і кольором тут не обійтись -- на карті кольорів і так вистачає.
     private static const string ICON_SELF   = "\\DZ\\gear\\navigation\\data\\map_tshelter_ca.paa";
@@ -209,6 +228,9 @@ class OZ_PdaPageMap : OZ_PdaPage
     // вийшовши з вкладки й зайшовши знову (звіт зі стенду 2026-09-09,
     // зауваження 2). Тому тут -- та сама страховка, що в Contacts і Device:
     // не щосекунди, а раз на 5 тіків.
+    //
+    // Цей же опит везе й маячки приладу в руках: посилка beacons -- про
+    // надітий, і такому екранові її не беремо (див. OnResponse).
     override void OnRefresh()
     {
         m_Beat++;
@@ -468,7 +490,8 @@ class OZ_PdaPageMap : OZ_PdaPage
         // предка з UserID 5 нема потреби.
         //
         // Подвійний клік по самій карті лишається тим, чим був, -- парою
-        // одинарних, які збирає OnPageMouseUp.
+        // одинарних, які збирає OnPageMouseUp. Мітку з такої пари ставить
+        // лише перший: другий застає її в дорозі (m_AddStep).
         if (!w || w.GetUserID() != 5)
             return false;
 
@@ -602,10 +625,27 @@ class OZ_PdaPageMap : OZ_PdaPage
         if (m_Name)
             m.Name = m_Name.GetText();
 
+        SendAdd(m);
+    }
+
+    // ОДНА ДОРОГА ДЛЯ НОВОЇ МІТКИ -- і з кліку по карті, і з кнопки. Тут же
+    // стоїть защіпка «мітка в дорозі» (m_AddStep): друга мітка з подвійного
+    // кліку не йде, поки перша не повернулась станом.
+    private void SendAdd(OZ_MapMarker m)
+    {
+        if (m_AddStep != 0)
+        {
+            OZ_Log.Dbg("map: a mark is still on its way - the next add is dropped");
+            return;
+        }
+
         string json;
         string err;
-        if (JsonFileLoader<OZ_MapMarker>.MakeData(m, json, err, false))
-            OZ_Rpc.Request(OZ_PdaConst.PAGE_MAP, "marker_add", json);
+        if (!JsonFileLoader<OZ_MapMarker>.MakeData(m, json, err, false))
+            return;
+
+        m_AddStep = 1;
+        OZ_Rpc.Request(OZ_PdaConst.PAGE_MAP, "marker_add", json);
     }
 
     // Обрати мітку (або зняти вибір порожнім id): підсвітити на карті й у
@@ -893,6 +933,24 @@ class OZ_PdaPageMap : OZ_PdaPage
     {
         // Кнопка ставить мітку ТАМ, ДЕ СТОЇШ. «Позначити місце, де я стою» --
         // найчастіша дія в Зоні. Мітку В ІНШОМУ місці ставить клік по карті.
+        //
+        // АЛЕ «ДЕ СТОЇШ» ЗНАЄ ЛИШЕ ПРИЛАД З GPS (ТЗ-4 R-B2.2). Позицію кнопка
+        // бере з локальної сутності гравця, і приладу вона не питала: КПК без
+        // GPS клав мітку рівно під ноги, а список показував її координати --
+        // тобто казав гравцеві точне «ти тут» обхідним шляхом. Клік по карті
+        // лишається: там місце обирає сам гравець, і прилад нічого йому не
+        // підказує.
+        if (m_State && !GpsKnows())
+        {
+            // Капсула «де я» теж не знає, але причина в неї своя, і назвати
+            // треба саме її: будь-яку зміну міток капсулі відмовляє сервер.
+            if (m_State.Frozen)
+                SetHintSticky("MapHint", "#STR_OZ_ERR_FROZEN");
+            else
+                SetHintSticky("MapHint", "#STR_OZ_MAP_NO_GPS");
+            return;
+        }
+
         string at = "";
         if (m_State)
             at = LocalSelfPos();
@@ -908,10 +966,7 @@ class OZ_PdaPageMap : OZ_PdaPage
         if (m_Name)
             m.Name = m_Name.GetText();
 
-        string json;
-        string err;
-        if (JsonFileLoader<OZ_MapMarker>.MakeData(m, json, err, false))
-            OZ_Rpc.Request(OZ_PdaConst.PAGE_MAP, "marker_add", json);
+        SendAdd(m);
     }
 
     private void SendMarkerDelete()
@@ -951,8 +1006,19 @@ class OZ_PdaPageMap : OZ_PdaPage
     override void OnResponse(string op, bool ok, string json, string error)
     {
         // Пуш маячків: жива частина стану їде сама, поки сторінка відкрита.
+        //
+        // АЛЕ ПОСИЛКА -- ПРО НАДІТИЙ ПРИЛАД: вона годує мінікарту худа. Ця ж
+        // сторінка говорить про прилад ЕКРАНА -- той, про який відповідає
+        // state, спершу руки. Коли це різні прилади, посилка з надітого
+        // переписувала екран приладу в руках: КПК без GPS у руці раптом
+        // «чув» ефір, а шпигунська плата надітого вливала в нього всі
+        // транспондери. Тоді сторінці вистачає власного опиту state
+        // (OnRefresh), який про її прилад і питає.
         if (op == "beacons" && ok)
         {
+            if (!ScreenIsWorn())
+                return;
+
             OZ_BeaconPush bp = new OZ_BeaconPush();
             string berr;
             if (JsonFileLoader<OZ_BeaconPush>.LoadData(json, bp, berr) && bp && m_State)
@@ -994,6 +1060,19 @@ class OZ_PdaPageMap : OZ_PdaPage
 
         if (op == "transponder" || op == "marker_add" || op == "marker_del" || op == "marker_edit")
         {
+            // Чи це відповідь на НАШЕ додавання (див. m_AddStep). Мітка, що
+            // лягла, лишається «в дорозі» до наступного стану; відмова --
+            // чекати більше нічого.
+            bool ownAdd = false;
+            if (op == "marker_add" && m_AddStep == 1)
+            {
+                ownAdd = true;
+                if (ok)
+                    m_AddStep = 2;
+                else
+                    m_AddStep = 0;
+            }
+
             if (!ok)
             {
                 SetHintSticky("MapHint", "#" + error);
@@ -1002,7 +1081,11 @@ class OZ_PdaPageMap : OZ_PdaPage
             {
                 // Поставили -- поле підпису чистимо, інакше наступна мітка
                 // мовчки успадкує чужу назву.
-                if (m_Name)
+                //
+                // ЛИШЕ СВОЄ ДОДАВАННЯ. Поле належить цій сторінці, а відповідь
+                // map/marker_add колись приходила й на запит сторінки чату --
+                // і стирала назву, яку гравець саме набирав тут.
+                if (ownAdd && m_Name)
                     m_Name.SetText("");
             }
             else if (op == "marker_del")
@@ -1017,6 +1100,11 @@ class OZ_PdaPageMap : OZ_PdaPage
 
         if (op != "state")
             return;
+
+        // Стан ПІСЛЯ відповіді на додавання: мітка в ньому вже є -- або не
+        // ляже ніколи, якщо стану відмовили. Чекати більше нічого.
+        if (m_AddStep == 2)
+            m_AddStep = 0;
 
         if (!ok)
         {
@@ -1045,6 +1133,23 @@ class OZ_PdaPageMap : OZ_PdaPage
         if (!me)
             return "";
         return me.GetPosition().ToString(false);
+    }
+
+    // Чи прилад ЕКРАНА -- той самий, що НАДІТИЙ. Прилад екрана питаємо тим
+    // самим правилом, яким сервер відповідає на state (OZ_PdaHud.Device(),
+    // спершу руки); надітий -- тим, яким сервер збирає посилку маячків.
+    //
+    // Екран сьогодні відкривається лише дією над приладом у руках
+    // (OZ_PdaMenu.m_Device), тож поки меню відкрите, відповідь -- «ні», і
+    // сторінка живе самим state. Гілку посилки все одно не викидаємо:
+    // правило «посилка -- лише екранові надітого» не мусить триматися на
+    // тому, як сьогодні відкривається меню.
+    private bool ScreenIsWorn()
+    {
+        OZ_PDA_Base worn = OZ_PdaLookup.WornBy(PlayerBase.Cast(GetGame().GetPlayer()));
+        if (!worn)
+            return false;
+        return OZ_PdaHud.Device() == worn;
     }
 
     private void Paint()

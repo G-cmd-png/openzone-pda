@@ -113,34 +113,34 @@ class OZ_ChatAskPair
 // Steam64 автора (AUid), сервер міняє його на готовий ARGB і стирає.
 class OZ_ChatColors
 {
-    static string EnrichView(string json)
+    // Фарбує рядки розмови НА МІСЦІ (розмова вже скопійована викликачем --
+    // див. OZ_ChatIds.Rewrite) і стирає Steam64 авторів.
+    //
+    // КОЛІР КОЖНОГО АВТОРА -- РАЗ. Історія на двадцять рядків -- це зазвичай
+    // двоє-троє авторів, а колір питався на кожен рядок: угруповання автора
+    // через службу ідентичності, і для офлайнового автора це було читання
+    // його файлу.
+    static void PaintView(OZ_ChatView v)
     {
-        OZ_ChatView v = new OZ_ChatView();
-        string err;
-        if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, err) || !v || !v.Lines)
-            return json;
-
-        // Копія до першого фарбування: корінь тут скриптовий, а Lines і
-        // кожен рядок у ньому виділив серіалізатор -- і рядок n читається
-        // вже після n-1 пошуків кольору, кожен з яких виділяє пам'ять.
-        // Далі серіалізується САМЕ КОПІЯ: це те, що поїде клієнтові.
-        v = v.Copy();
-
-        for (int i = 0; i < v.Lines.Count(); i++)
-            Paint(v.Lines[i]);
-
-        string outJson;
-        if (!JsonFileLoader<OZ_ChatView>.MakeData(v, outJson, err, false))
-            return json;
-        return outJson;
-    }
-
-    static void Paint(OZ_ChatLine l)
-    {
-        if (!l)
+        if (!v || !v.Lines)
             return;
-        l.WhoColor = ColorFor(l.AUid);
-        l.AUid = "";
+
+        map<string, int> memo = new map<string, int>();
+        for (int i = 0; i < v.Lines.Count(); i++)
+        {
+            OZ_ChatLine l = v.Lines[i];
+            if (!l)
+                continue;
+
+            int col;
+            if (!memo.Find(l.AUid, col))
+            {
+                col = ColorFor(l.AUid);
+                memo.Set(l.AUid, col);
+            }
+            l.WhoColor = col;
+            l.AUid = "";
+        }
     }
 
     // ОДНЕ ПРАВИЛО НА ОБИДВА ШЛЯХИ -- історію й живий рядок.
@@ -232,14 +232,19 @@ class OZ_ChatFail
     }
 }
 
-// Рядок, який приїхав опитом. Uid тут -- сам одержувач, тому клієнтові його
-// віддавати не шкода: свій же Steam64 він і так знає.
+// Рядок, який приїхав опитом.
+//
+// Uid -- рахунок-одержувач, і клієнтові він НЕ їде: сервер читає його й
+// стирає. «Свій же Steam64 він і так знає» було правдою лише для свого
+// приладу; тримач чужого живого термінала отримував Steam64 власника.
+// Так само Id -- конверт їде з токеном розмови, а не з ключем моста
+// (OZ_ChatIds): ключ особистої розмови складений зі Steam64 обох.
 class OZ_ChatPush
 {
     string AUid = "";
     int    WhoColor = 0;
     // Куди прийшов рядок: рід розмови і назва (для груп) -- тост показує
-    // канал у заголовку.
+    // канал у заголовку. "invite" -- запрошення до групи (міст 0.8.2).
     string Kind = "";
     string Title = "";
     string Uid;
@@ -248,6 +253,133 @@ class OZ_ChatPush
     string Who;
     string Text;
     bool   Mine;
+    // Анонімний рядок Зони: ім'я малює клієнт своєю мовою.
+    bool   Anon = false;
+    // Міст укоротив текст, щоб конверт пройшов 1023-байтову стелю розбору;
+    // повний рядок віддає open.
+    bool   Clipped = false;
+    // Чи цей рядок для НАДІТОГО приладу, тобто для худа (ТЗ-5 R-B1.1).
+    // Екран чату бере будь-який; тост -- лише цей.
+    bool   ToHud = false;
+}
+
+// Хто отримує живий рядок і для якого приладу: надітого (ToHud) чи того, що в
+// руках (екран).
+class OZ_ChatHolder
+{
+    PlayerIdentity Id;
+    bool ToHud;
+}
+
+// ТОКЕНИ РОЗМОВ замість ключів моста.
+//
+// Ключ особистої розмови в мості -- "d:<steam64>#<покоління>:<steam64>#<покоління>",
+// групи -- "g:<steam64 засновника>:...", запрошення несе ключ групи. Сервер
+// пересилав тіла моста як є, і будь-який клієнт читав Steam64 кожного
+// співрозмовника, навіть офлайнового, і засновника групи -- з одного
+// запрошення. Правило серії «клієнт чужого Steam64 не бачить» (OZ_Names)
+// ламалось саме тут.
+//
+// Токен -- номер за порядком появи, і більше в ньому нічого немає. Мапа
+// живе один запуск сервера: після рестарту клієнт однаково перепитує
+// перелік розмов і отримує нові токени.
+class OZ_ChatIds
+{
+    private static ref map<string, string> s_ByToken;
+    private static ref map<string, string> s_ById;
+    private static int s_Next = 0;
+
+    static string Out(string id)
+    {
+        if (id == "")
+            return "";
+
+        if (!s_ById)
+        {
+            s_ById    = new map<string, string>();
+            s_ByToken = new map<string, string>();
+        }
+
+        string t;
+        if (s_ById.Find(id, t))
+            return t;
+
+        s_Next++;
+        t = "c" + s_Next.ToString();
+        s_ById.Set(id, t);
+        s_ByToken.Set(t, id);
+        return t;
+    }
+
+    // Ключ моста за токеном; порожньо -- такого токена сервер не видавав
+    // (підробка або рестарт).
+    static string In(string token)
+    {
+        if (token == "" || !s_ByToken)
+            return "";
+
+        string id;
+        if (s_ByToken.Find(token, id))
+            return id;
+        return "";
+    }
+
+    // Тіло відповіді моста -> те, що їде клієнтові: ключі стають токенами,
+    // Steam64 авторів -- кольорами. Копія -- до перших виділень (шапка
+    // OZ_PdaTypes).
+    static string Rewrite(string op, string json)
+    {
+        string err;
+        string outJson;
+
+        if (op == "list")
+        {
+            OZ_ChatList l = new OZ_ChatList();
+            if (!JsonFileLoader<OZ_ChatList>.LoadData(json, l, err) || !l)
+                return "";
+            l = l.Copy();
+
+            int h;
+            for (h = 0; h < l.Items.Count(); h++)
+                l.Items[h].Id = Out(l.Items[h].Id);
+            for (h = 0; h < l.Invites.Count(); h++)
+                l.Invites[h].Id = Out(l.Invites[h].Id);
+
+            if (!JsonFileLoader<OZ_ChatList>.MakeData(l, outJson, err, false))
+                return "";
+            return outJson;
+        }
+
+        if (op == "open" || op == "older")
+        {
+            OZ_ChatView v = new OZ_ChatView();
+            if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, err) || !v)
+                return "";
+            v = v.Copy();
+
+            v.Id = Out(v.Id);
+            OZ_ChatColors.PaintView(v);
+
+            if (!JsonFileLoader<OZ_ChatView>.MakeData(v, outJson, err, false))
+                return "";
+            return outJson;
+        }
+
+        if (op == "start" || op == "group_new")
+        {
+            OZ_ChatRef r = new OZ_ChatRef();
+            if (!JsonFileLoader<OZ_ChatRef>.LoadData(json, r, err) || !r)
+                return "";
+
+            r.Id = Out(r.Id);
+            if (!JsonFileLoader<OZ_ChatRef>.MakeData(r, outJson, err, false))
+                return "";
+            return outJson;
+        }
+
+        // Решта операцій тіла клієнтові не віддає (див. m_Body).
+        return "";
+    }
 }
 
 // ------------------------------------------------------------ адресат
@@ -279,14 +411,69 @@ class OZ_ChatWho
         return sender.GetName();
     }
 
-    // Кому ДОНОСИТИ живі рядки акаунта. За ЧИЙ акаунт слухає гравець --
-    // вирішує пристрій у руках: тримач чужого живого КПК слухає акаунт
-    // ВЛАСНИКА сесії, а не свій. Інакше учасник спільної розмови отримував
-    // би той самий рядок двічі -- раз за себе, раз за пристрій (зміряно
-    // живим тестом 2026-08-29: дубль у відправника з чужого КПК). Капсула
-    // не слухає нічого: її тримач не отримує рядків узагалі.
-    static void Holders(string uid, array<PlayerIdentity> outTo)
+    // ЗА ЧИЙ РАХУНОК ГОВОРИТЬ ПРИЛАД ПРЯМО ЗАРАЗ, або порожньо.
+    //
+    // Жива сесія, увімкнений, ВІДІМКНЕНИЙ. Досі живі рядки йшли будь-кому з
+    // приладом, на якому просто була сесія: тримач ЗАМКНЕНОГО чужого КПК
+    // отримував особисті рядки власника пушем, а його надітий худ показував
+    // їх тостом -- без жодного коду. Ворота сторінок на тому самому приладі
+    // відмовляли б кожному запиту; пуш їх обходив. Неініційований прилад
+    // теж не говорить ні за кого: його сторінки мовчать (ворота, NOT_INIT).
+    // Замок рахуємо ліниво тут же -- так, як ворота й пуш маячків.
+    static string SpeaksFor(OZ_PDA_Base dev)
     {
+        if (!dev)
+            return "";
+        if (!dev.OZ_IsOn())
+            return "";
+
+        OZ_PdaProfile prof = OZ_PdaProfiles.ForClass(dev.GetType());
+        if (prof)
+            dev.OZ_EvaluateLock(prof.LockAfterMinutes);
+        if (!dev.OZ_IsUnlocked())
+            return "";
+
+        string acc = dev.OZ_SessionUid();
+        if (acc == "")
+            return "";
+        if (OZ_PdaCapsule.IsFrozen(dev))
+            return "";
+        return acc;
+    }
+
+    // Хто кого слухає -- ОДИН РАЗ НА КАДР, а не на кожен конверт.
+    //
+    // Міст шле по конверту на КОЖНОГО одержувача, а рядок ефіру Зони --
+    // це конверт на кожного в онлайні; обхід усіх гравців на кожен конверт
+    // давав n^2 в одному кадрі. Тепер обхід один, а конверти беруть готове.
+    private static ref map<string, ref array<ref OZ_ChatHolder>> s_Memo;
+    private static int s_MemoAt = -1;
+
+    private static void Remember(string acc, PlayerIdentity id, bool hud)
+    {
+        array<ref OZ_ChatHolder> list;
+        if (!s_Memo.Find(acc, list))
+        {
+            list = new array<ref OZ_ChatHolder>();
+            s_Memo.Set(acc, list);
+        }
+
+        OZ_ChatHolder h = new OZ_ChatHolder();
+        h.Id  = id;
+        h.ToHud = hud;
+        list.Insert(h);
+    }
+
+    // ДВА ПРИЛАДИ -- ДВІ ПРАВДИ (ТЗ-5 R-B1): надітий дає худ (тост), той,
+    // що в руках, -- екран. Досі рахувався один, і той -- у руках: трофей-
+    // капсула в руці глушив рядки власного надітого, а живий чужий КПК у
+    // руці вливав у надітий худ тости чужого рахунку.
+    private static void Rebuild()
+    {
+        if (!s_Memo)
+            s_Memo = new map<string, ref array<ref OZ_ChatHolder>>();
+        s_Memo.Clear();
+
         array<Man> players = new array<Man>();
         GetGame().GetPlayers(players);
 
@@ -300,28 +487,48 @@ class OZ_ChatWho
             if (!id)
                 continue;
 
-            string acc = id.GetPlainId();
-            OZ_PDA_Base dev = OZ_PdaLookup.HeldByPlayer(pl);
+            // НЕМАЄ ПРИЛАДУ -- НЕМАЄ РЯДКІВ (ТЗ-4 R-G3.1).
+            string worn  = SpeaksFor(OZ_PdaLookup.WornBy(pl));
+            string hands = SpeaksFor(OZ_PDA_Base.Cast(pl.GetItemInHands()));
 
-            // НЕМАЄ ПРИЛАДУ -- НЕМАЄ РЯДКІВ (ТЗ-4 R-G3.1). Живі рядки досі
-            // доносились і гравцеві без КПК, і в коді це стояло як навмисне;
-            // рішення власника зняло це. Винятку більше немає жодного:
-            // віртуальний термінал, якому адмін дозволяв чат без предмета,
-            // прибрано рішенням власника 2026-09-08.
-            // Навантаження не росте (R-G3.2): прилад тут і так уже знайдено.
-            if (!dev)
-                continue;
-
-            if (dev.OZ_SessionUid() != "")
-            {
-                if (OZ_PdaCapsule.IsFrozen(dev))
-                    continue;
-                acc = dev.OZ_SessionUid();
-            }
-
-            if (acc == uid)
-                outTo.Insert(id);
+            if (worn != "")
+                Remember(worn, id, true);
+            // Той самий рахунок на обох приладах -- один рядок, і він худу:
+            // інакше учасник отримав би той самий рядок двічі.
+            if (hands != "" && hands != worn)
+                Remember(hands, id, false);
         }
+    }
+
+    private static void Fresh()
+    {
+        int now = GetGame().GetTime();
+        if (s_Memo && s_MemoAt == now)
+            return;
+
+        Rebuild();
+        s_MemoAt = now;
+    }
+
+    static void Holders(string uid, array<ref OZ_ChatHolder> outTo)
+    {
+        Fresh();
+
+        array<ref OZ_ChatHolder> list;
+        if (!s_Memo.Find(uid, list))
+            return;
+
+        for (int i = 0; i < list.Count(); i++)
+            outTo.Insert(list[i]);
+    }
+
+    // Усі рахунки, які хтось зараз слухає.
+    static void Accounts(array<string> outAcc)
+    {
+        Fresh();
+
+        for (int i = 0; i < s_Memo.Count(); i++)
+            outAcc.Insert(s_Memo.GetKey(i));
     }
 }
 
@@ -329,29 +536,27 @@ class OZ_ChatWho
 // говорить за власника й тоді, коли самого власника в Зоні немає, -- його
 // акаунт теж мусить бути в списку, інакше тримач не побачить ані чужих
 // рядків, ані еха власних відправлень.
+//
+// Правило те саме, що в доставки (OZ_ChatWho.SpeaksFor): замкнений чи
+// вимкнений прилад рахунку не тримає, і опитувати його нема для кого.
 class OZ_PdaUidProvider : OZ_BridgeUidProvider
 {
     override void Fill(array<string> uids)
     {
-        array<Man> players = new array<Man>();
-        GetGame().GetPlayers(players);
+        array<string> accs = new array<string>();
+        OZ_ChatWho.Accounts(accs);
 
-        for (int i = 0; i < players.Count(); i++)
+        // Наявність -- мапою, а не Find по масиву на кожен рахунок.
+        map<string, bool> have = new map<string, bool>();
+        for (int u = 0; u < uids.Count(); u++)
+            have.Set(uids[u], true);
+
+        for (int i = 0; i < accs.Count(); i++)
         {
-            PlayerBase pl = PlayerBase.Cast(players[i]);
-            if (!pl)
+            if (have.Contains(accs[i]))
                 continue;
-
-            OZ_PDA_Base dev = OZ_PdaLookup.HeldByPlayer(pl);
-            if (!dev)
-                continue;
-
-            string acc = dev.OZ_SessionUid();
-            if (acc == "" || OZ_PdaCapsule.IsFrozen(dev))
-                continue;
-
-            if (uids.Find(acc) == -1)
-                uids.Insert(acc);
+            have.Set(accs[i], true);
+            uids.Insert(accs[i]);
         }
     }
 }
@@ -364,9 +569,10 @@ class OZ_ChatReply : OZ_BridgeReply
     protected string m_Op;
     protected bool   m_Body;
 
-    // body=true -- віддати клієнтові тіло відповіді як є. Форма, якою
-    // говорить міст, і форма, якої чекає сторінка, збігаються навмисно:
-    // перекладати їх туди-сюди означало б тримати два описи одного й того ж.
+    // body=true -- віддати клієнтові тіло відповіді. Форма, якою говорить
+    // міст, і форма, якої чекає сторінка, збігаються навмисно -- опис один;
+    // сервер лише міняє в ній ключі на токени й Steam64 на кольори
+    // (OZ_ChatIds.Rewrite).
     void OZ_ChatReply(string uid, string op, bool body)
     {
         m_Uid  = uid;
@@ -388,13 +594,11 @@ class OZ_ChatReply : OZ_BridgeReply
             return;
         }
 
+        // Тіло -- ПЕРЕКЛАДЕНЕ: ключі розмов стають токенами, Steam64
+        // авторів -- кольорами (OZ_ChatIds.Rewrite). Як є воно не їде.
         string body = "";
         if (m_Body)
-        {
-            body = json;
-            if (m_Op == "open" || m_Op == "older")
-                body = OZ_ChatColors.EnrichView(json);
-        }
+            body = OZ_ChatIds.Rewrite(m_Op, json);
 
         OZ_Rpc.Respond(to, OZ_PdaConst.PAGE_CHAT, m_Op, true, body, "");
     }
@@ -412,10 +616,10 @@ class OZ_ChatReply : OZ_BridgeReply
 // Вхідні рядки з Discord. Один конверт -- один одержувач: міст уже розклав
 // розмову по її учасниках, і сервер лише доносить.
 //
-// Воріт пристрою тут НАВМИСНО немає -- як і на самих операціях сторінки:
-// розмови належать акаунту (та сама доктрина, що в записок), а показ рядка
-// гейтить клієнт наявністю ввімкненого КПК. Серверні ворота на пуш нічого
-// не захистили б, поки list чесно віддає той самий вміст за запитом.
+// ВОРОТА ПРИЛАДУ ТУТ Є (OZ_ChatWho.SpeaksFor): увімкнений, відімкнений, жива
+// сесія. Досі їх не було з доводом «list чесно віддає той самий вміст за
+// запитом» -- але list на вимкненому чи замкненому приладі ворота
+// сторінок не віддають, тож пуш був єдиними дверима повз замок.
 class OZ_ChatSink : OZ_BridgeSink
 {
     override void Deliver(string json)
@@ -439,18 +643,53 @@ class OZ_ChatSink : OZ_BridgeSink
         // рядка, який точно наш.
         string toUid = p.Uid;
 
+        array<ref OZ_ChatHolder> tos = new array<ref OZ_ChatHolder>();
+        OZ_ChatWho.Holders(toUid, tos);
+        if (tos.Count() == 0)
+            return;
+
+        // Steam64 одержувача й автора на клієнт не їдуть, ключ розмови --
+        // токеном (див. OZ_ChatIds).
+        p.Uid = "";
+        p.Id  = OZ_ChatIds.Out(p.Id);
         p.WhoColor = OZ_ChatColors.ColorFor(p.AUid);
         p.AUid = "";
 
-        string ejson;
+        // Два варіанти конверта щонайбільше -- для худа й для екрана.
+        string hudJson    = "";
+        string screenJson = "";
         string eerr;
-        if (!JsonFileLoader<OZ_ChatPush>.MakeData(p, ejson, eerr, false))
-            ejson = json;
 
-        array<PlayerIdentity> tos = new array<PlayerIdentity>();
-        OZ_ChatWho.Holders(toUid, tos);
         for (int t = 0; t < tos.Count(); t++)
-            OZ_Rpc.Respond(tos[t], OZ_PdaConst.PAGE_CHAT, "line", true, ejson, "");
+        {
+            OZ_ChatHolder h = tos[t];
+            if (!h || !h.Id)
+                continue;
+
+            string body;
+            if (h.ToHud)
+            {
+                if (hudJson == "")
+                {
+                    p.ToHud = true;
+                    if (!JsonFileLoader<OZ_ChatPush>.MakeData(p, hudJson, eerr, false))
+                        continue;
+                }
+                body = hudJson;
+            }
+            else
+            {
+                if (screenJson == "")
+                {
+                    p.ToHud = false;
+                    if (!JsonFileLoader<OZ_ChatPush>.MakeData(p, screenJson, eerr, false))
+                        continue;
+                }
+                body = screenJson;
+            }
+
+            OZ_Rpc.Respond(h.Id, OZ_PdaConst.PAGE_CHAT, "line", true, body, "");
+        }
     }
 
     // ЩО ЯДРО ЗНАЄ ПРО РІД "chat" -- рівно те, що сказано тут (платформа
@@ -500,6 +739,11 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         ok    = false;
         error = "STR_OZ_ERR_UNKNOWN_OP";
 
+        // «ЗАБРАТИ МІТКУ З ПОВІДОМЛЕННЯ» -- мостові не потрібна, тож і його
+        // живість тут ні до чого.
+        if (op == "mark_take")
+            return MarkTake(json, sender, ok, error);
+
         // Alive(), А НЕ IsRunning() -- і це та сама помилка, яку вже ловили
         // в OZ_Link.Gated.
         //
@@ -538,6 +782,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
                     return "";
                 }
             }
+            else
+            {
+                // ЖИВИЙ прилад у розмові -- штамп капсули йде вперед (див.
+                // OZ_PDA_Base.OZ_TouchSnapshot): по ньому ріжеться історія,
+                // коли прилад замерзне, і розмова, яку власник веде зараз,
+                // мусить у той зріз потрапити.
+                OZ_PlayerData ownPd = OZ_PlayerStore.Peek(m_Acc);
+                if (ownPd)
+                    capDev.OZ_TouchSnapshot(ownPd.SessionEpoch);
+            }
         }
 
         if (op == "list")
@@ -552,8 +806,18 @@ class OZ_PdaHandlerChat : OZ_PageHandler
         if (op == "send")
             return Send(json, sender, error);
 
+        // start буває СИНХРОННИМ: розмова з NPC уже є в мості, і токен на неї
+        // віддається одразу (StartNpc). Решта починань іде до моста й
+        // повертає DEFER; відмова несе ключ. Порожня помилка тут, отже,
+        // означає лише одне -- готову відповідь, і без ok=true ядро віддало б
+        // її клієнтові як відмову з порожньою причиною.
         if (op == "start")
-            return Start(json, sender, error);
+        {
+            string started = Start(json, sender, error);
+            if (error == "")
+                ok = true;
+            return started;
+        }
 
         if (op == "group_new")
             return GroupNew(json, sender, error);
@@ -619,9 +883,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
         string uid = m_Acc;
 
+        string key = OZ_ChatIds.In(r.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskOpen a = new OZ_ChatAskOpen();
         a.Uid   = uid;
-        a.Id    = r.Id;
+        a.Id    = key;
         a.Limit = OZ_PdaTune.ChatHistoryOpen();
         a.Until = m_Until;
 
@@ -651,9 +922,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
         string uid = m_Acc;
 
+        string key = OZ_ChatIds.In(r.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskOlder a = new OZ_ChatAskOlder();
         a.Uid    = uid;
-        a.Id     = r.Id;
+        a.Id     = key;
         a.Before = r.Before;
         a.Limit = OZ_PdaTune.ChatHistoryPage();
         a.Until  = m_Until;
@@ -710,18 +988,30 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
         string uid = m_Acc;
 
+        string key = OZ_ChatIds.In(s.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskSend a = new OZ_ChatAskSend();
         a.Uid  = uid;
         a.Name = OZ_ChatWho.NameOf(uid, sender);
-        a.Id   = s.Id;
+        a.Id   = key;
         a.Text = text;
 
         // Анонімність їде далі мостові, а СЛІД лишається тут: гравцям ім'я
         // не показується ніде, але власник сервера мусить мати, куди
         // подивитись після нічного погрому в ефірі.
+        //
+        // ДВА ІМЕНІ, а не одне. Прилад говорить за власника сесії, а набирав
+        // текст той, хто його тримає: з чужим живим терміналом рядок у лозі
+        // називав ЖЕРТВУ, і адмін, ідучи за ним, карав би її. Міст автора
+        // анонімки не зберігає зовсім, тож інших слідів немає.
         a.Anon = s.Anon;
         if (s.Anon)
-            OZ_Log.Info("chat: anonymous zone message from " + uid);
+            OZ_Log.Info("chat: anonymous zone message from account " + uid + ", typed by " + sender.GetPlainId());
 
         string letter;
         if (!JsonFileLoader<OZ_ChatAskSend>.MakeData(a, letter, err, false))
@@ -758,6 +1048,14 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             error = "STR_OZ_ERR_NOT_CONTACT";
             return "";
         }
+
+        // NPC-КОНТАКТ -- не друг, а пейджер. Його рядок у записнику несе тег
+        // "npc:<id>", а шукали його серед хешованих ключів друзів -- тобто
+        // кнопка «Написати» відповідала «не ваш контакт» завжди. Розмова з
+        // NPC у мості вже є (її заводить перша ж репліка NPC), і її ключ
+        // складається з тега й рахунку: сюди лише видаємо на неї токен.
+        if (OZ_PdaNpc.IsNpcUid(r.Key))
+            return StartNpc(r.Key, me, uid, error);
 
         string theirKey = UidByKeyIn(me.Friends, r.Key);
         if (theirKey == "")
@@ -864,9 +1162,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
         string uid = m_Acc;
 
+        string key = OZ_ChatIds.In(r.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskGroupEdit a = new OZ_ChatAskGroupEdit();
         a.Uid   = uid;
-        a.Id    = r.Id;
+        a.Id    = key;
         a.Title = OZ_Text.Clip(MiscGameplayFunctions.SanitizeString(r.Name), OZ_PdaTune.ChatTitleMax());
         a.Desc  = OZ_Text.Clip(MiscGameplayFunctions.SanitizeString(r.Desc), OZ_PdaTune.ChatDescMax());
 
@@ -897,9 +1202,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             return "";
         }
 
+        string key = OZ_ChatIds.In(r.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskGroupDel a = new OZ_ChatAskGroupDel();
         a.Uid = m_Acc;
-        a.Id  = r.Id;
+        a.Id  = key;
 
         string letter;
         if (!JsonFileLoader<OZ_ChatAskGroupDel>.MakeData(a, letter, err, false))
@@ -947,8 +1259,12 @@ class OZ_PdaHandlerChat : OZ_PageHandler
                 if (!OZ_PlayerStore.IsLive(me.Friends[i]))
                     continue;
 
+                // Хто сховався від записників (HiddenFromContacts), того
+                // немає й у переліку запрошень: записник його не показує, і
+                // пікер групи не мусить бути другими дверима до тих самих
+                // імен.
                 OZ_PlayerData d = OZ_PlayerStore.Peek(OZ_PlayerStore.UidOfKey(me.Friends[i]));
-                if (d && d.Name != "")
+                if (d && d.Name != "" && !d.HiddenFromContacts)
                     inv.Names.Insert(d.Name);
             }
         }
@@ -995,9 +1311,16 @@ class OZ_PdaHandlerChat : OZ_PageHandler
             return "";
         }
 
+        string key = OZ_ChatIds.In(add.Id);
+        if (key == "")
+        {
+            error = "STR_OZ_ERR_NO_CHAT";
+            return "";
+        }
+
         OZ_ChatAskInvite a = new OZ_ChatAskInvite();
         a.Uid      = uid;
-        a.Id       = add.Id;
+        a.Id       = key;
         a.OtherUid = theirUid;
         a.Max      = OZ_PdaTune.ChatGroupMax();
         a.TtlS     = OZ_PdaTune.GroupInviteTtlS();
@@ -1014,6 +1337,60 @@ class OZ_PdaHandlerChat : OZ_PageHandler
 
         error = OZ_Const.DEFER;
         return "";
+    }
+
+    // Відповідь на «написати NPC»: токен його розмови, синхронно. Писати
+    // туди не можна (розмова NPC -- лише для читання, клієнт так і малює);
+    // якщо NPC ще не сказав ні слова, open чесно відповість «розмови немає».
+    private string StartNpc(string tag, OZ_PlayerData me, string uid, out string error)
+    {
+        if (!me.NpcContacts || me.NpcContacts.Find(tag) == -1)
+        {
+            error = "STR_OZ_ERR_NOT_CONTACT";
+            return "";
+        }
+
+        OZ_ChatRef r = new OZ_ChatRef();
+        r.Id = OZ_ChatIds.Out("npc:" + OZ_PdaNpc.IdOf(tag) + ":" + uid);
+
+        string outJson;
+        string err;
+        if (!JsonFileLoader<OZ_ChatRef>.MakeData(r, outJson, err, false))
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+
+        error = "";
+        return outJson;
+    }
+
+    // Мітка з повідомлення -- на карту приладу, але ВІДПОВІДЬ ЧАТУ.
+    //
+    // Сторінка чату слала marker_add від імені сторінки карти й тут-таки
+    // писала «збережено», а справжня відповідь приходила СХОВАНІЙ сторінці
+    // карти: відмова «пам'ять повна» жила в її невидимому рядку, а успіх
+    // стирав ім'я, яке гравець почав набирати на карті. Тепер той самий
+    // marker_add іде звідси, з перевіркою доступу до карти саме так, як її
+    // робили ворота, і відповідь повертається туди, де клікнули.
+    private string MarkTake(string json, PlayerIdentity sender, out bool ok, out string error)
+    {
+        ok = false;
+
+        string why;
+        if (!OZ_PageAccess.Allowed(sender, OZ_PdaConst.PAGE_MAP, "marker_add", why))
+        {
+            error = why;
+            return "";
+        }
+
+        if (OZ_PdaCapsule.IsFrozen(OZ_PdaLookup.HeldBy(sender)))
+        {
+            error = "STR_OZ_ERR_FROZEN";
+            return "";
+        }
+
+        return OZ_PdaHandlerMap.AddMarkerFor(json, sender, ok, error);
     }
 
     // ------------------------------------------------------------ дрібне

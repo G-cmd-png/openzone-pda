@@ -285,6 +285,10 @@ class OZ_CarrierView
 {
     ref OZ_MarkerList Marks;
     ref OZ_NoteBook   Notes;
+    // Маршрут -- ТРЕТЯ секція, і досі її не бачив ніхто: чип із самою ниткою
+    // читався як «формат не читається», а імпортувати її не вмів жоден
+    // екран. Тепер вона і видна тут, і береться IMPORT'ом.
+    ref OZ_MarkerList Route;
     // Спільна місткість і скільки з неї зайнято. Двох чисел досить, щоб
     // намалювати смужку заповнення для будь-якого набору родів -- зокрема
     // тих, про які ця сторінка не знає.
@@ -308,6 +312,11 @@ class OZ_CarrierView
             c.Notes = Notes.Copy();
         else
             c.Notes = new OZ_NoteBook();
+
+        if (Route)
+            c.Route = Route.Copy();
+        else
+            c.Route = new OZ_MarkerList();
 
         return c;
     }

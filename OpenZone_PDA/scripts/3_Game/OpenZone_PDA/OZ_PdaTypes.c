@@ -70,15 +70,13 @@ class OZ_PdaDeviceStatus
     // власника 2026-09-08: стан завжди описує РІЧ, і другого роду відповіді
     // в клієнта немає.
 
-    // Мережевий id САМЕ того КПК, про який відповів сервер, і чи він у руках.
+    // Чи прилад, про який відповів сервер, у руках.
     //
-    // Клієнт не має права шукати пристрій самотужки: сервер бере руки, а
-    // потім інвентар, і якщо клієнт подивиться лише в руки -- він покаже
-    // прев'ю порожнечі там, де сервер говорить про цілком конкретний
-    // пристрій у рюкзаку. Одна правда, і вона приїжджає звідси.
+    // МЕРЕЖЕВОГО ID ТУТ БІЛЬШЕ НЕМАЄ. NetLow/NetHigh їхали рівно для одного
+    // читача -- прев'ю моделі на сторінці пристрою, -- а та панель схована
+    // розкладкою назавжди (рішення власника 2026-08-29), тож сервер щоразу
+    // рахував адресу, яку клієнт годував невидимому віджету.
     bool InHands = false;
-    int  NetLow  = 0;
-    int  NetHigh = 0;
 
     // --- живлення ---
     //
@@ -95,7 +93,14 @@ class OZ_PdaDeviceStatus
     bool   CarrierWritten = false;
     // Капсула часу: вміст знімка і його дата -- лише коли пристрій офлайн.
     // Ім'я власника сесії -- завжди, коли сесія є (пристрій розімкнено).
-    string Snapshot  = "";
+    //
+    // ЗНІМОК ЇДЕ ОБ'ЄКТОМ, а не рядком-JSON у полі. Рядок-значення розбирач
+    // ріже на 1023 байтах (зміряно, persistence-networking.md), а знімок
+    // несе ім'я кожного контакту: на тридцяти кириличних іменах він уже не
+    // влазив, і сторінка капсули мовчки лишалась без власника й записника.
+    // Та сама пастка, від якої раніше звільнили OZ_CarrierView: вкладений
+    // об'єкт серіалізується полями, і кожне поле коротше за стелю.
+    ref OZ_PdaSnapshot Snap;
     string OwnerName = "";
     // Чи Є в пристрою власник узагалі: без нього сторінка пропонує
     // ІНІЦІАЦІЮ, з чужим -- скидання.
@@ -104,7 +109,10 @@ class OZ_PdaDeviceStatus
     int    CarrierMarks = -1;
     int    CarrierNotes = -1;
     int    CarrierMaxRecords  = 0;
-    // Скільки одиниць на чипі; -1 -- невідомо (чужий род або старий запис).
+    // Точки маршруту на чипі; -1 -- секції маршруту немає. Без цього поля
+    // чип, на якому лежить лише маршрут, сторінка називала «формат не
+    // читається»: мітки й нотатки -1, а про третю секцію статус мовчав.
+    int    CarrierRoute = -1;
 
     // --- замок ---
     bool HasPin   = false;
@@ -129,7 +137,15 @@ class OZ_PdaDeviceStatus
     // Скільки цифр у коді цієї моделі (ТЗ-5 R-B3.3). Пад малює рівно
     // стільки крапок і стільки ж цифр приймає. Нуль -- відповідь від
     // сервера, який про це поле ще не знає: клієнт бере умовчання.
+    //
+    // ДВА ЧИСЛА, а не одне. PinLength -- довжина коду, що ВЖЕ стоїть на
+    // приладі (його набирають, щоб відімкнути чи змінити); NewPinLength --
+    // скільки цифр профіль вимагає від НОВОГО коду. Поки число було одне,
+    // адмін, що зменшив PinLength профілю з шести до чотирьох, замикав
+    // власників шестизначних кодів назавжди: пад більше не приймав шостої
+    // цифри, а сервер звіряв код, що лежав на приладі.
     int  PinLength = 0;
+    int  NewPinLength = 0;
 
     // --- сесія ---
     bool   Online     = false;        // епохи збігаються
@@ -161,20 +177,20 @@ class OZ_PdaDeviceStatus
         c.DisplayName = DisplayName;
         c.ModuleSlots = ModuleSlots;
         c.InHands     = InHands;
-        c.NetLow      = NetLow;
-        c.NetHigh     = NetHigh;
         c.Powered     = Powered;
         c.HasBattery  = HasBattery;
         c.Charge01    = Charge01;
         c.CarrierClass    = CarrierClass;
         c.CarrierWritable = CarrierWritable;
         c.CarrierWritten  = CarrierWritten;
-        c.Snapshot   = Snapshot;
+        if (Snap)
+            c.Snap = Snap.Copy();
         c.OwnerName  = OwnerName;
         c.Owned      = Owned;
         c.CarrierMarks = CarrierMarks;
         c.CarrierNotes = CarrierNotes;
         c.CarrierMaxRecords = CarrierMaxRecords;
+        c.CarrierRoute = CarrierRoute;
         c.HasPin        = HasPin;
         c.Unlocked      = Unlocked;
         c.AutoLock      = AutoLock;
@@ -187,6 +203,7 @@ class OZ_PdaDeviceStatus
         c.LockWaitS    = LockWaitS;
         c.LockAfterMinutes = LockAfterMinutes;
         c.PinLength    = PinLength;
+        c.NewPinLength = NewPinLength;
         c.Online      = Online;
         c.SessionMine = SessionMine;
         c.SnapshotAt  = SnapshotAt;
@@ -709,9 +726,9 @@ class OZ_ChatHead
     string Kind     = "direct";
     string Title    = "";
     // Desc, LastAt і LastText МІСТ шле, а ця сторінка не малює. Поля
-    // лишаються описом його конверта, а не нашим навантаженням: тіло
-    // v1/chat/list іде на клієнт як є, і зняти їх звідси означало б лише
-    // перестати їх РОЗБИРАТИ, не заощадивши жодного байта.
+    // лишаються описом його конверта: сервер перекладає тіло v1/chat/list
+    // цим самим класом (ключі -> токени, OZ_ChatIds), і чого тут немає,
+    // того клієнт не отримає.
     string Desc     = "";
     string LastAt   = "";
     string LastText = "";
@@ -801,6 +818,10 @@ class OZ_ChatLine
     string Who  = "";
     string Text = "";
     bool   Mine = false;
+    // Анонімний рядок ефіру Зони (міст 0.8.2). Ім'я автора клієнт малює САМ
+    // своєю мовою -- міст писав у Who готове українське речення, і
+    // англомовний клієнт показував його як є.
+    bool   Anon = false;
 
     OZ_ChatLine Copy()
     {
@@ -811,6 +832,7 @@ class OZ_ChatLine
         c.Who      = Who;
         c.Text     = Text;
         c.Mine     = Mine;
+        c.Anon     = Anon;
         return c;
     }
 }

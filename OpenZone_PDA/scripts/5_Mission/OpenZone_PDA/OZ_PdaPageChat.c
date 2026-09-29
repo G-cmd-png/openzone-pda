@@ -65,6 +65,27 @@ class OZ_PdaPageChat : OZ_PdaPage
 
     private string m_OpenId = "";
 
+    // ВІДКРИТА РОЗМОВА ПЕРЕЧИТУЄТЬСЯ ОДНИМ ЗАПИТОМ ЗА РАЗ. Обрізаний мостом
+    // рядок (Clipped) і рядок, що випередив саму розмову, просять open знову,
+    // і в зливі ефіру Зони це був би запит на кожен рядок. Поки open у
+    // дорозі, наступне прохання лише ставить m_OpenAgain, і по відповіді
+    // розмова перечитується ще раз: та відповідь могла бути зібрана раніше,
+    // ніж міст узяв рядок, заради якого просили.
+    private bool m_OpenBusy;
+    private bool m_OpenAgain;
+
+    // СТЕЛЯ РЯДКІВ РОЗМОВИ -- у пам'яті й на екрані. Рядки ефіру приходять
+    // самі й без кінця, і кожен -- ще й віджет: без стелі відкрита на годину
+    // Зона тримала б тисячі того й того.
+    private static const int LINES_MAX = 200;
+
+    // Верх розмови зрізано стелею. Якір Before називає НАЙСТАРІШИЙ ПОКАЗАНИЙ
+    // рядок, а його вже немає: «старіше» від нього перескочило б усе зрізане.
+    private bool m_Cut;
+
+    // Від якого якоря пішов запит «старіше», що зараз у дорозі.
+    private string m_OlderFrom;
+
     override string LayoutPath()
     {
         return "OpenZone_PDA/gui/layouts/oz_pda_page_chat.layout";
@@ -105,6 +126,27 @@ class OZ_PdaPageChat : OZ_PdaPage
         SetText("BtnSendText", "#STR_OZ_CHAT_SEND");
         SetText("BtnGroupText", "#STR_OZ_CHAT_NEW_GROUP");
         SetText("BtnInviteText", "#STR_OZ_CHAT_INVITE");
+    }
+
+    // ДЕМОНТАЖ СТОРІНКИ: меню зносить сторінки, коли закривається чи
+    // перебудовує стрічку вкладок. Рядки розмови зареєстровані на СИНГЛТОНІ
+    // WidgetEventHandler (LineRow), а база знімає лише корінь -- рядки гинуть
+    // разом із ним, а записи обробника лишались би з мертвими ключами. Саме
+    // цей клас помилок уже коштував нам краху клієнта. Тож спершу відписка
+    // рядків (ClearLines), потім корінь.
+    //
+    // Відкладене мотання й підгонка переліку -- туди ж: CallLater без
+    // парного Remove кликав би сторінку, якої вже немає.
+    override void Unlink()
+    {
+        GetGame().GetCallQueue(CALL_CATEGORY_GUI).Remove(ScrollDown);
+        GetGame().GetCallQueue(CALL_CATEGORY_GUI).Remove(ListFit);
+
+        // Сторінка без розкладки OnBuilt не бачила, і масиву рядків немає.
+        if (m_LineRows)
+            ClearLines();
+
+        super.Unlink();
     }
 
     override void OnSelected()
@@ -154,7 +196,77 @@ class OZ_PdaPageChat : OZ_PdaPage
         string json;
         string err;
         if (JsonFileLoader<OZ_ChatRef>.MakeData(r, json, err, false))
+        {
+            m_OpenBusy = true;
             OZ_Rpc.Request(OZ_PdaConst.PAGE_CHAT, "open", json);
+        }
+    }
+
+    // Перечитати відкриту розмову, коли про це просить не гравець, а рядок
+    // (див. m_OpenBusy): один запит у дорозі, решта -- прапорцем.
+    private void Reopen()
+    {
+        if (m_OpenBusy)
+        {
+            m_OpenAgain = true;
+            return;
+        }
+        RequestOpen();
+    }
+
+    // Відкрити розмову -- кліком у переліку чи відповіддю start/group_new.
+    //
+    // ПОКАЗАНЕ НАЛЕЖИТЬ ПОПЕРЕДНІЙ, доки не приїхала нова. Лишити його на
+    // екрані означало б, що гравець читає одну розмову, а пише в іншу (SEND
+    // бере m_OpenId), і панель правки групи підставляла б назву попередньої.
+    // Тож екран чиститься одразу, а малює його лише open саме для m_OpenId.
+    private void Pick(string id)
+    {
+        // Накладки належать ПОПЕРЕДНІЙ розмові: запрошення, вибране в
+        // одній групі, не має права полетіти в іншу.
+        if (m_InvitePanel)
+            m_InvitePanel.Show(false);
+        if (m_GroupPanel)
+            m_GroupPanel.Show(false);
+        Widget mpo = Wgt("MembersPanel");
+        if (mpo)
+            mpo.Show(false);
+
+        if (id != m_OpenId)
+        {
+            m_OpenId = id;
+            // Анонімність -- свідомий рух у кожній розмові (див. m_Anon), а
+            // не спадок попередньої.
+            m_Anon = false;
+            DropView();
+        }
+
+        // Запит нижче новіший за все, що просили досі.
+        m_OpenAgain = false;
+        RequestOpen();
+    }
+
+    // Розмови на екрані більше немає: ні рядків, ні шапки, ні кнопок, що
+    // належать саме їй. Нову намалює PaintView, коли приїде її open.
+    private void DropView()
+    {
+        m_View = null;
+        m_Cut = false;
+        m_OpenBusy = false;
+        m_OpenAgain = false;
+        ClearLines();
+        SetText("ChatTitle", "");
+
+        if (m_BtnOlder)
+            m_BtnOlder.Show(false);
+        if (m_BtnMembers)
+            m_BtnMembers.Show(false);
+        if (m_BtnInvite)
+            m_BtnInvite.Show(false);
+        if (m_BtnGroupEdit)
+            m_BtnGroupEdit.Show(false);
+        if (m_BtnAnon)
+            m_BtnAnon.Show(false);
     }
 
     // Бесіда обирається КЛІКОМ по самому рядку: списків-віджетів тут більше
@@ -168,19 +280,7 @@ class OZ_PdaPageChat : OZ_PdaPage
         // перебудовується, і номер після цього вказував би на іншу розмову.
         if (w.GetUserID() == 3)
         {
-            m_OpenId = w.GetName();
-
-            // Накладки належать ПОПЕРЕДНІЙ розмові: запрошення, вибране в
-            // одній групі, не має права полетіти в іншу.
-            if (m_InvitePanel)
-                m_InvitePanel.Show(false);
-            if (m_GroupPanel)
-                m_GroupPanel.Show(false);
-            Widget mpo = Wgt("MembersPanel");
-            if (mpo)
-                mpo.Show(false);
-
-            RequestOpen();
+            Pick(w.GetName());
             PaintList();
             return true;
         }
@@ -191,9 +291,12 @@ class OZ_PdaPageChat : OZ_PdaPage
             return true;
         }
 
+        // Рядок розмови. Номер -- МІСЦЕ віджета в m_LineRows, а не ім'я,
+        // написане при створенні: стеля зрізає верх, і номери, видані
+        // рядкам колись, після цього вказували б на сусідні.
         if (w.GetUserID() == 6)
         {
-            TakeMark(w.GetName().ToInt());
+            TakeMark(m_LineRows.Find(w));
             return true;
         }
 
@@ -301,8 +404,20 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (m_OlderBusy || !m_View)
                 return true;
 
+            // Верх зрізано стелею (AppendLine): якір називає рядок, якого на
+            // екрані вже немає, а назвати новий верх клієнт не може -- якір
+            // непрозорий, і рядки ефіру свого не несуть. Розмову відкриваємо
+            // наново: open дає свіжий хвіст із чесним Before, і гортати назад
+            // далі можна від нього без дірки й без повторів.
+            if (m_Cut)
+            {
+                Reopen();
+                return true;
+            }
+
             m_OlderBusy = true;
             SetText("BtnOlderText", "#STR_OZ_CHAT_LOADING");
+            m_OlderFrom = m_View.Before;
 
             OZ_ChatOlderReq r = new OZ_ChatOlderReq();
             r.Id     = m_OpenId;
@@ -392,13 +507,15 @@ class OZ_PdaPageChat : OZ_PdaPage
         m.Desc = desc;
         m.Pos  = px.ToString() + " 0 " + pz.ToString();
 
+        // ВІДПОВІДЬ -- СЮДИ, І ЛИШЕ ВОНА КАЖЕ, ЧИМ СКІНЧИЛОСЬ. Тут ішов
+        // marker_add від імені сторінки карти й одразу писалось «збережено»:
+        // справжня відповідь лягала в сховану карту, тож «пам'ять повна»
+        // ніхто не бачив, а успіх стирав ім'я, яке гравець набирав на карті.
+        // mark_take -- той самий лист, але відповідає чат (OnResponse).
         string json;
         string err;
         if (JsonFileLoader<OZ_MapMarker>.MakeData(m, json, err, false))
-        {
-            OZ_Rpc.Request(OZ_PdaConst.PAGE_MAP, "marker_add", json);
-            SetHintSticky("ChatHint", "#STR_OZ_CHAT_MARK_TAKEN");
-        }
+            OZ_Rpc.Request(OZ_PdaConst.PAGE_CHAT, "mark_take", json);
     }
 
     private void SendMessage()
@@ -508,6 +625,15 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (!m_View || older.Id != m_OpenId)
                 return;
 
+            // Сторінка рахована ВІД ВЕРХНЬОГО РЯДКА, який був на екрані в мить
+            // запиту. Поки вона їхала, верх міг змінитись: або стеля його
+            // зрізала (m_Cut), або розмову перечитав open (обрізаний рядок,
+            // правка групи) і приніс новий якір. Вклеєна в будь-якому з двох
+            // випадків, вона лягла б над діркою. «Старіше» ще раз -- і від
+            // чесного верху.
+            if (m_Cut || m_View.Before != m_OlderFrom)
+                return;
+
             // Спершу прапорці, потім вставка: InsertAt росте, а це виділення,
             // після якого читати з конверта вже не можна.
             m_View.More   = older.More;
@@ -521,8 +647,29 @@ class OZ_PdaPageChat : OZ_PdaPage
             return;
         }
 
+        // МІТКА З ПОВІДОМЛЕННЯ (TakeMark). Мосту ця операція не потрібна,
+        // тож ні її успіх, ні відмова нічого не кажуть про його живість --
+        // тому вона стоїть ПЕРЕД воротами нижче, які саме це й вирішують.
+        // Липко обидва: слово сервера не має злітати з першою перемальовкою.
+        if (op == "mark_take")
+        {
+            if (ok)
+                SetHintSticky("ChatHint", "#STR_OZ_CHAT_MARK_TAKEN");
+            else
+                SetHintSticky("ChatHint", "#" + error);
+            return;
+        }
+
         if (!ok)
         {
+            // Невдалий open теж закінчує свою дорогу: інакше наступний
+            // обрізаний рядок чекав би на відповідь, якої вже не буде.
+            if (op == "open")
+            {
+                m_OpenBusy  = false;
+                m_OpenAgain = false;
+            }
+
             // Відмова моста -- стан сторінки, а не одна невдала операція.
             // Ловимо її ТУТ, бо сюди сходяться всі відмови, і перемальовуємо:
             // саме перемальовування й гасить поле вводу.
@@ -564,12 +711,32 @@ class OZ_PdaPageChat : OZ_PdaPage
             OZ_ChatView v = new OZ_ChatView();
             if (!JsonFileLoader<OZ_ChatView>.LoadData(json, v, verr))
             {
+                m_OpenBusy = false;
                 OZ_Log.Error("chat view unreadable: " + verr);
                 return;
             }
-            // Копія: розмова живе, поки відкрите вікно.
+
+            // ВІДПОВІДЬ ПРИВ'ЯЗАНА ДО РОЗМОВИ, як і в "older" вище. На
+            // порядок відповідей покладатись не можна: влучання в кеш моста
+            // відповідає синхронно, тож гравець обирає A, потім B, а відповідь
+            // для A може приїхати останньою. Прийнята, вона показувала б A,
+            // поки SEND і правка групи йдуть у B. Id -- непрозорий токен:
+            // лише порівнюємо.
+            if (v.Id != m_OpenId)
+                return;
+
+            // Копія: розмова живе, поки відкрите вікно. Свіжа розмова --
+            // свіжий якір, тож і зрізу більше немає.
+            m_OpenBusy = false;
+            m_Cut = false;
             m_View = v.Copy();
             PaintView();
+
+            if (m_OpenAgain)
+            {
+                m_OpenAgain = false;
+                RequestOpen();
+            }
             return;
         }
 
@@ -609,6 +776,17 @@ class OZ_PdaPageChat : OZ_PdaPage
                 return;
             }
 
+            // ЗАПРОШЕННЯ ДО ГРУПИ -- не рядок розмови: Id порожній, а Text --
+            // старе українське речення для давніх клієнтів, яке тут не
+            // показуємо. Приймають його в переліку ліворуч, тож перечитуємо
+            // перелік. Окремою гілкою, бо без відкритої розмови порожній Id
+            // збігся б із порожнім m_OpenId і запрошення пішло б у розмову.
+            if (p.Kind == "invite")
+            {
+                RequestList();
+                return;
+            }
+
             // Не в ту розмову, що відкрита. Перелік перечитуємо ЛИШЕ коли
             // цієї розмови в ньому ще немає: відомій пуш нічого видимого
             // не міняє (підзаголовок -- рід розмови, не останній рядок),
@@ -621,9 +799,13 @@ class OZ_PdaPageChat : OZ_PdaPage
                 return;
             }
 
-            if (!m_View)
+            // Розмова ще не приїхала -- або рядок приїхав УКОРОЧЕНИМ: міст
+            // різав текст, щоб конверт пройшов стелю розбору в 1023 байти, і
+            // цілим цей рядок віддає лише open. Показати обрубок означало б
+            // показати не те, що сказали. Reopen тримає один запит у дорозі.
+            if (!m_View || p.Clipped)
             {
-                RequestOpen();
+                Reopen();
                 return;
             }
 
@@ -633,9 +815,9 @@ class OZ_PdaPageChat : OZ_PdaPage
             line.Text = p.Text;
             line.Mine = p.Mine;
             line.WhoColor = p.WhoColor;
-            m_View.Lines.Insert(line);
+            line.Anon = p.Anon;
+            AppendLine(line);
 
-            PaintView();
             if (!HeadKnown(p.Id))
                 RequestList();
             return;
@@ -644,16 +826,22 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (op == "start" || op == "group_new")
         {
             // Сервер відповів id нової розмови -- одразу її й відкриваємо.
+            // Той самий шлях, що й клік у переліку (Pick): показане досі
+            // належить попередній розмові, і лишатись на екрані не сміє.
             string rerr;
+            string started = "";
             OZ_ChatRef r = new OZ_ChatRef();
             if (JsonFileLoader<OZ_ChatRef>.LoadData(json, r, rerr) && r)
-                m_OpenId = r.Id;
+                started = r.Id;
 
             if (m_Input)
                 m_Input.SetText("");
 
             RequestList();
-            RequestOpen();
+            if (started != "")
+                Pick(started);
+            else
+                RequestOpen();
             return;
         }
 
@@ -717,9 +905,7 @@ class OZ_PdaPageChat : OZ_PdaPage
             if (m_OpenId == m_GroupEditId || m_View && m_View.Id == m_GroupEditId)
             {
                 m_OpenId = "";
-                m_View = null;
-                ClearLines();
-                SetText("ChatTitle", "");
+                DropView();
             }
             RequestList();
             return;
@@ -761,9 +947,15 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (t)
             t.SetText(inv.Title);
 
+        // Ім'я запрошувача міст шле порожнім, коли не знає його: підпис
+        // «ім'я невідоме» -- наш, мовою гравця.
+        string inviter = inv.From;
+        if (inviter == "")
+            inviter = Widget.TranslateString("#STR_OZ_CONTACT_NONAME");
+
         TextWidget f = TextWidget.Cast(w.FindAnyWidget("InvFrom"));
         if (f)
-            f.SetText(Widget.TranslateString("#STR_OZ_CHAT_INV_FROM") + " " + inv.From);
+            f.SetText(Widget.TranslateString("#STR_OZ_CHAT_INV_FROM") + " " + inviter);
 
         // Ім'я кнопки -- ключ групи, UserID відрізняє «так» від «ні».
         //
@@ -805,9 +997,17 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (pick)
             pick.Show(h.Id == m_OpenId);
 
+        // ЕФІР ЗОНИ -- СВОЇМ ІМЕНЕМ. Назву розмови дає міст, і для Зони це
+        // готове українське слово, яке англомовний клієнт показував як є;
+        // назва в неї одна на всіх, тож малюємо її з таблиці рядків.
         TextWidget t = TextWidget.Cast(w.FindAnyWidget("HeadTitle"));
         if (t)
-            t.SetText(h.Title);
+        {
+            if (h.Kind == "zone")
+                t.SetText("#STR_OZ_CHAT_ZONE");
+            else
+                t.SetText(h.Title);
+        }
 
         TextWidget k = TextWidget.Cast(w.FindAnyWidget("HeadKind"));
         if (k)
@@ -815,12 +1015,13 @@ class OZ_PdaPageChat : OZ_PdaPage
             // Лише слово роду: опис у два рядки не влазив і різався
             // сусіднім рядком (рішення власника 2026-08-29). Повний опис
             // видно в шапці відкритої розмови.
+            //
+            // У Зони слово роду тепер і є назвою (див. вище): те саме
+            // двічі в одному рядку нічого б не додало.
             if (h.Kind == "npc")
                 k.SetText("#STR_OZ_CHAT_PAGER");
             else if (h.Kind == "group")
                 k.SetText("#STR_OZ_CHAT_GROUP");
-            else if (h.Kind == "zone")
-                k.SetText("#STR_OZ_CHAT_ZONE");
             else
                 k.SetText("");
         }
@@ -866,6 +1067,65 @@ class OZ_PdaPageChat : OZ_PdaPage
             m_Lines.Update();
     }
 
+    // РЯДОК, ЩО ПРИЙШОВ ПУШЕМ: ОДИН ВІДЖЕТ У КІНЕЦЬ. Досі кожен пуш кликав
+    // PaintView, а той зносить і будує наново ВСІ рядки розмови -- у зливі
+    // ефіру Зони це сотні віджетів на кожну репліку.
+    //
+    // СТЕЛЯ -- LINES_MAX, і ріжемо ВЕРХ: найстаріші рядки йдуть разом зі
+    // своїми віджетами (і з реєстрацією на синглтоні обробника). Хвіст, який
+    // гравець читає, лишається цілим.
+    //
+    // Зрізаний верх ламає якір Before: той називає найстаріший показаний
+    // рядок, якого вже немає, а новий якір клієнт узяти ні з чого -- якір
+    // непрозорий, і пуш свого не несе. Тож зріз лише ставить m_Cut: «старіше»
+    // після нього відкриває розмову наново (свіжий хвіст із чесним якорем),
+    // а не гортає від мертвого. More після зрізу -- факт: зрізане і є
+    // старішим за показане.
+    //
+    // Довантаження старого стелею не ріжемо навмисно: його просить гравець,
+    // сторінкою на клік, і зрізати щойно попрошене означало б не дати його
+    // зовсім. Наступний пуш поверне розмову під стелю.
+    private void AppendLine(OZ_ChatLine l)
+    {
+        m_View.Lines.Insert(l);
+        LineRow(l);
+
+        bool cut = false;
+        Widget gone;
+        while (m_View.Lines.Count() > LINES_MAX)
+        {
+            m_View.Lines.RemoveOrdered(0);
+            if (m_LineRows.Count() > 0)
+            {
+                gone = m_LineRows[0];
+                m_LineRows.RemoveOrdered(0);
+                if (gone)
+                {
+                    WidgetEventHandler.GetInstance().UnregisterWidget(gone);
+                    gone.Unlink();
+                }
+            }
+            cut = true;
+        }
+
+        if (cut)
+        {
+            m_Cut = true;
+            m_View.More = true;
+            if (m_BtnOlder)
+                m_BtnOlder.Show(m_View.Kind != "npc");
+        }
+
+        // Те саме, чим закінчує PaintView для непорожньої розмови: «тут ще
+        // нічого не сказано» мусить зійти з першим рядком.
+        PaintCounter();
+
+        // Спейсер міряється лише на Update(), а скролер -- лише в кадрі.
+        if (m_Lines)
+            m_Lines.Update();
+        GetGame().GetCallQueue(CALL_CATEGORY_GUI).CallLater(ScrollDown, 50, false);
+    }
+
     // Одна репліка.
     //
     // Своє позначаємо СМУЖКОЮ й кольором імені, а не стрілкою «>». Стрілка
@@ -873,10 +1133,15 @@ class OZ_PdaPageChat : OZ_PdaPage
     // рядок, і напрям доводилось малювати символом усередині тексту.
     private void LineRow(OZ_ChatLine l)
     {
-        if (!m_Lines)
-            return;
+        Widget w;
+        if (m_Lines)
+            w = GetGame().GetWorkspace().CreateWidgets("OpenZone_PDA/gui/layouts/oz_pda_chat_line.layout", m_Lines);
 
-        Widget w = GetGame().GetWorkspace().CreateWidgets("OpenZone_PDA/gui/layouts/oz_pda_chat_line.layout", m_Lines);
+        // Запис у m_LineRows -- НА КОЖЕН рядок розмови, навіть коли віджет не
+        // створився: m_LineRows іде пліч-о-пліч із m_View.Lines (стеля зрізає
+        // обидва з одного краю, мітку шукає місце віджета), і пропуск зсунув
+        // би всі наступні на сусідній рядок.
+        m_LineRows.Insert(w);
         if (!w)
             return;
 
@@ -886,11 +1151,6 @@ class OZ_PdaPageChat : OZ_PdaPage
 
         // Рядок клікабельний: одержувач мітки забирає її одним дотиком.
         w.SetUserID(6);
-        w.SetName(m_LineRows.Count().ToString());
-        if (!w)
-            return;
-
-        m_LineRows.Insert(w);
 
         Widget mine = w.FindAnyWidget("LineMine");
         if (mine)
@@ -899,7 +1159,16 @@ class OZ_PdaPageChat : OZ_PdaPage
         TextWidget who = TextWidget.Cast(w.FindAnyWidget("LineWho"));
         if (who)
         {
-            who.SetText(l.Who);
+            // Анонім Зони -- підпис КЛІЄНТА, мовою гравця: Who такого рядка
+            // не показуємо ніколи (міст писав туди готове українське
+            // речення). Порожнє ім'я -- міст його не знає; раніше він
+            // підставляв сирий Steam64.
+            if (l.Anon)
+                who.SetText("#STR_OZ_CHAT_ANON_WHO");
+            else if (l.Who == "")
+                who.SetText("#STR_OZ_CONTACT_NONAME");
+            else
+                who.SetText(l.Who);
             // Фракційна фарба з сервера б'є навіть «своє» помаранчеве:
             // хто ти по фракції -- важливіше, ніж чий рядок.
             if (l.WhoColor != 0)
@@ -934,7 +1203,7 @@ class OZ_PdaPageChat : OZ_PdaPage
     {
         if (button != MouseState.LEFT)
             return false;
-        OZ_Log.Dbg("pda chat: line row pressed " + w.GetName());
+        OZ_Log.Dbg("pda chat: line row pressed " + m_LineRows.Find(w).ToString());
         return OnPageClick(w, x, y);
     }
 
@@ -1125,7 +1394,11 @@ class OZ_PdaPageChat : OZ_PdaPage
         if (!m_View)
             return;
 
-        SetText("ChatTitle", m_View.Title);
+        // Ефір Зони -- своїм ім'ям, з таблиці рядків (див. HeadRow).
+        if (m_View.Kind == "zone")
+            SetText("ChatTitle", "#STR_OZ_CHAT_ZONE");
+        else
+            SetText("ChatTitle", m_View.Title);
         m_ViewDesc = m_View.Desc;
 
         // Члени групи -- накладка по кнопці MEMBERS: рядки розмови ніхто
@@ -1146,8 +1419,17 @@ class OZ_PdaPageChat : OZ_PdaPage
             string ms = "";
             if (m_View.Members)
             {
+                // Кого міст не знає на ім'я, того шле порожнім (раніше --
+                // сирим Steam64). Підпис один на склейку: SetText перекладає
+                // лише рядок, що ЦІЛИЙ є ключем, тож переклад -- заздалегідь.
+                string noname = Widget.TranslateString("#STR_OZ_CONTACT_NONAME");
                 for (int mi = 0; mi < m_View.Members.Count(); mi++)
-                    ms += m_View.Members[mi] + "\n";
+                {
+                    string member = m_View.Members[mi];
+                    if (member == "")
+                        member = noname;
+                    ms += member + "\n";
+                }
             }
             TextWidget ml = TextWidget.Cast(Wgt("MembersList"));
             if (ml)

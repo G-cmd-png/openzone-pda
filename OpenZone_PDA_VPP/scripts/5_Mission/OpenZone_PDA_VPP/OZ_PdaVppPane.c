@@ -24,6 +24,10 @@ modded class OZ_VppAdminMenu
     private bool   m_HwWritable = true;
     private bool   m_HwDelArmed = false;
 
+    // Редактор Profiles.json утримав НЕ ВЕСЬ файл (див. OnCfgText) -- тоді
+    // APPLY вимкнений: він надіслав би на сервер обрубок.
+    private bool   m_ProfCut = false;
+
     override void OnCreate(Widget RootW)
     {
         super.OnCreate(RootW);
@@ -110,9 +114,31 @@ modded class OZ_VppAdminMenu
         if (name == "Profiles")
         {
             MultilineEditBoxWidget ed = MultilineEditBoxWidget.Cast(M_SUB_WIDGET.FindAnyWidget("PdaProfEdit"));
-            if (ed)
-                ed.SetText(body);
-            Hint("Profiles loaded");
+            if (!ed)
+                return;
+            ed.SetText(body);
+
+            // РЕДАКТОР МІРЯЄ СЕБЕ САМ, а не вірить, що вмістив.
+            //
+            // Поле вводу тримає обмежену кількість байтів (скіл, gui-layouts
+            // §22: вставка на 1371 байт лишилась рівно 512), а Profiles.json
+            // живого сервера -- кілька тисяч. Досі APPLY слав назад те, що
+            // поле ВТРИМАЛО, тобто обрубок, і сервер або відмовляв (JSON не
+            // розбирається), або -- гірше -- приймав урізаний перелік
+            // профілів. Тепер порівнюємо довжину того, що поле віддає, з
+            // довжиною файла: менше -- APPLY вимкнений до наступного
+            // перечитування, а адмін знає, що файл треба правити на диску.
+            string got;
+            ed.GetText(got);
+            bool cut = false;
+            if (got.Length() < body.Length())
+                cut = true;
+            m_ProfCut = cut;
+
+            if (cut)
+                Hint("Profiles.json is " + body.Length().ToString() + " bytes, this editor holds " + got.Length().ToString() + ": APPLY is off, edit the file on disk");
+            else
+                Hint("Profiles loaded");
             return;
         }
 
@@ -252,6 +278,15 @@ modded class OZ_VppAdminMenu
             SetEdit("HwPages", JoinPages(ms.EnablesPages));
             SetEdit("HwMarks", "");
             m_HwWritable = true;
+
+            // Запис, який оголосив чужий мод, адмін бачить як такий: SAVE
+            // зробить його своїм, а DELETE не допоможе (див. нижче).
+            if (ms.Origin != "")
+            {
+                PaintHwToggles();
+                Hint("module: " + ms.ClassName + " (declared by a mod; SAVE makes it yours)");
+                return;
+            }
         }
         else
         {
@@ -366,6 +401,18 @@ modded class OZ_VppAdminMenu
             ms.PowerFactor = GetEdit("HwPower").ToFloat();
             ms.SpyMinutes  = GetEdit("HwSpy").ToFloat();
             ms.EnablesPages = SplitPages(GetEdit("HwPages"));
+
+            // ПРАВКА АДМІНА ЗАБИРАЄ ЗАПИС СОБІ.
+            //
+            // Запис із непорожнім Origin належить модові, і кожне
+            // завантаження накладає його оголошення знову (OZ_PdaHardware.
+            // Insert чіпає лише записи модів). Гаряче застосування -- теж
+            // завантаження, тож SAVE тут був холостим: форма казала
+            // «збережено», а ServerLoad за мить повертав модові значення.
+            // Порожній Origin -- це й є «запис адміна»: так обіцяє коментар
+            // над полем Origin, і тепер це робить сама форма.
+            if (ms.Origin != "")
+                ms.Origin = "";
         }
         else if (m_HwPickedKind == "carrier")
         {
@@ -411,6 +458,22 @@ modded class OZ_VppAdminMenu
             return;
         }
 
+        // МОДУЛЬ ЧУЖОГО МОДА НЕ ВИДАЛЯЄТЬСЯ -- ВІН ПОВЕРТАЄТЬСЯ. Мод оголошує
+        // його з кожним завантаженням конфіга, і гаряче застосування цього
+        // DELETE саме таким завантаженням і є: рядок зникав зі списку й за
+        // мить вертався, а адмін не знав чому. Вимкнути його можна правкою:
+        // SAVE робить запис адміновим, і далі мод його не чіпає.
+        if (m_HwPickedKind == "module" && m_HwPickedIdx < m_HwCfg.Modules.Count())
+        {
+            OZ_ModuleSpec picked = m_HwCfg.Modules[m_HwPickedIdx];
+            if (picked && picked.Origin != "")
+            {
+                m_HwDelArmed = false;
+                Hint("declared by a mod: it comes back on every load; edit it and SAVE instead");
+                return;
+            }
+        }
+
         if (!m_HwDelArmed)
         {
             m_HwDelArmed = true;
@@ -419,10 +482,12 @@ modded class OZ_VppAdminMenu
         }
         m_HwDelArmed = false;
 
+        // RemoveOrdered: Remove міняє місцями з останнім, і файл, який адмін
+        // потім читає очима, переставлявся б від кожного видалення.
         if (m_HwPickedKind == "module")
-            m_HwCfg.Modules.Remove(m_HwPickedIdx);
+            m_HwCfg.Modules.RemoveOrdered(m_HwPickedIdx);
         else
-            m_HwCfg.Carriers.Remove(m_HwPickedIdx);
+            m_HwCfg.Carriers.RemoveOrdered(m_HwPickedIdx);
 
         m_HwPickedIdx = -1;
         m_HwPickedKind = "";
@@ -439,6 +504,53 @@ modded class OZ_VppAdminMenu
             return;
         }
         SendCfg("Hardware", body);
+    }
+
+    // ПЕРЕНОС УСЕРЕДИНІ РЯДКОВОГО ЗНАЧЕННЯ -- ЦЕ ПЕРЕНОС РЕДАКТОРА.
+    //
+    // Поле з `lines` переносить набране, ВСТАВЛЯЮЧИ справжній \n (скіл,
+    // gui-layouts §22), і в Profiles.json він падав посеред id сторінки чи
+    // класнейма: "contac\nts" -- уже інша сторінка, і жоден прилад її не
+    // знайде. Сирий перенос усередині рядка JSON заборонений, а між токенами
+    // він -- звичайний пробіл, тож викидаємо лише ті, що стоять у лапках.
+    // Ріжемо по \n і \r (ASCII): кожен шматок лишається цілим UTF-8.
+    private string DropWrapsInStrings(string text)
+    {
+        string outp = "";
+        int n = text.Length();
+        int from = 0;
+        bool inStr = false;
+        bool esc = false;
+
+        for (int i = 0; i < n; i++)
+        {
+            string ch = text.Substring(i, 1);
+            if (esc)
+            {
+                esc = false;
+                continue;
+            }
+            if (inStr && ch == "\\")
+            {
+                esc = true;
+                continue;
+            }
+            if (ch == "\"")
+            {
+                inStr = !inStr;
+                continue;
+            }
+            if (inStr && (ch == "\n" || ch == "\r"))
+            {
+                if (i > from)
+                    outp += text.Substring(from, i - from);
+                from = i + 1;
+            }
+        }
+
+        if (from < n)
+            outp += text.Substring(from, n - from);
+        return outp;
     }
 
     private string JoinPages(array<string> pages)
@@ -546,12 +658,18 @@ modded class OZ_VppAdminMenu
 
             if (nm == "BtnProfApply")
             {
+                if (m_ProfCut)
+                {
+                    Hint("the editor holds only part of Profiles.json: APPLY would cut the file, edit it on disk");
+                    return true;
+                }
+
                 MultilineEditBoxWidget ed = MultilineEditBoxWidget.Cast(M_SUB_WIDGET.FindAnyWidget("PdaProfEdit"));
                 if (ed)
                 {
                     string body;
                     ed.GetText(body);
-                    SendCfg("Profiles", body);
+                    SendCfg("Profiles", DropWrapsInStrings(body));
                 }
                 return true;
             }

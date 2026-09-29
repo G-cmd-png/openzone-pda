@@ -114,6 +114,23 @@ class OZ_PdaProfilesApplier : OZ_AdminCfgApplier
             return false;
 
         OZ_PdaProfiles.ServerLoad();
+
+        // Число відсіків кожного класу їде клієнтові пакетом синхронізації
+        // (OZ_PdaConst.SYNC_SLOTS): з нього інвентар знає, які гнізда
+        // показати. Без розсилки тут змінений ModuleSlots доходив до тих, хто
+        // вже в Зоні, лише з перезаходом. Витрату живих приладів наздоганяє
+        // їхній власний OnWork (OZ_PDA_Base.OZ_CfgFollow).
+        array<Man> players = new array<Man>();
+        GetGame().GetPlayers(players);
+        for (int i = 0; i < players.Count(); i++)
+        {
+            if (!players[i])
+                continue;
+            PlayerIdentity id = players[i].GetIdentity();
+            if (id)
+                OZ_SyncSender.Send(id, "pda profiles applied");
+        }
+
         return true;
     }
 }

@@ -19,8 +19,21 @@ class OZ_HudEditMenu : UIScriptedMenu
     private ButtonWidget m_BtnReset;
     private ButtonWidget m_BtnCancel;
 
+    // «НАЗАД» -- ОПИТОМ UAUIBack, як в OZ_PdaMenu (див. там m_BackInput).
+    //
+    // Редактор закривався лише подією клавіші, а OnKeyPress приходить від
+    // віджета, що ТРИМАЄ фокус, -- фокус же тут не ставив ніхто, тож Escape
+    // до меню не доходив, і вийти можна було тільки кнопкою CANCEL. Тепер
+    // корінь бере фокус у OnShow, а головний шлях -- кадровий опит; подія
+    // клавіші лишається запасною, і друге спрацювання того самого натискання
+    // з'їдає позначка часу в Back().
+    private UAIDWrapper m_BackInput;
+    private int m_BackAtMs = 0;
+
     override Widget Init()
     {
+        m_BackInput = GetUApi().GetInputByID(UAUIBack).GetPersistentWrapper();
+
         layoutRoot = GetGame().GetWorkspace().CreateWidgets("OpenZone_PDA/gui/layouts/oz_pda_hud_edit.layout");
 
         // РОЗМІТКА МОГЛА НЕ ЗАВАНТАЖИТИСЬ, і далі тут було звернення до null.
@@ -102,13 +115,22 @@ class OZ_HudEditMenu : UIScriptedMenu
             return;
         }
 
+        SetFocus(layoutRoot);
         GetGame().GetUIManager().ShowUICursor(true);
-        GetGame().GetMission().PlayerControlDisable(INPUT_EXCLUDE_ALL);
+
+        // Місію беремо через змінну й перевіряємо -- той самий вартовий, що в
+        // OZ_PdaMenu і в OZ_LinkMenu ядра: на смерті рушій розбирає місію
+        // раніше, ніж закриває наші меню.
+        Mission mission = GetGame().GetMission();
+        if (mission)
+            mission.PlayerControlDisable(INPUT_EXCLUDE_ALL);
     }
 
     override void OnHide()
     {
-        GetGame().GetMission().PlayerControlEnable(true);
+        Mission mission = GetGame().GetMission();
+        if (mission)
+            mission.PlayerControlEnable(true);
         super.OnHide();
     }
 
@@ -154,6 +176,13 @@ class OZ_HudEditMenu : UIScriptedMenu
     override void Update(float timeslice)
     {
         super.Update(timeslice);
+
+        // Кадровий опит «назад» -- ГОЛОВНИЙ шлях виходу, як у OZ_PdaMenu.
+        if (m_BackInput && m_BackInput.InputP().LocalPress())
+        {
+            Back();
+            return;
+        }
 
         if (!m_Drag)
             return;
@@ -227,10 +256,23 @@ class OZ_HudEditMenu : UIScriptedMenu
     {
         if (key == KeyCode.KC_ESCAPE)
         {
-            Close();
+            Back();
             return true;
         }
         return super.OnKeyPress(w, x, y, key);
+    }
+
+    // «Назад» -- те саме, що CANCEL: вийти, нічого не записавши. Одне тіло
+    // на два шляхи (опит і подія клавіші): обидва бачать те саме натискання,
+    // і друге відсікає позначка часу -- 200 мс, як у OZ_PdaMenu.Back.
+    private void Back()
+    {
+        int now = GetGame().GetTime();
+        if (now - m_BackAtMs < 200)
+            return;
+        m_BackAtMs = now;
+
+        Close();
     }
 
     private void MouseFrac(out float fx, out float fy)

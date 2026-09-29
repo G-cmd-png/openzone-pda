@@ -57,6 +57,36 @@ class OZ_NoteBook
     }
 }
 
+// КНИЖКА ПРИЛАДУ -- розібрана, скопійована й із відповіддю, чи її взагалі
+// можна прочитати.
+//
+// Тут жило «нечитна -- починаємо чисту, але слід у лозі лишається: мовчки
+// згубити чиїсь записки не можна». Слід лишався, а записки губились: перше
+// ж збереження чи видалення писало нову книжку ПОВЕРХ нечитної. Тепер хто
+// пише -- відмовляє на unreadable; хто читає -- бачить порожню книжку, як і
+// раніше. Той самий розбір потрібен імпорту з носія (OZ_PdaHandlerDevice).
+class OZ_PdaNoteBook
+{
+    static OZ_NoteBook Load(OZ_PDA_Base pda, out bool unreadable)
+    {
+        unreadable = false;
+        OZ_NoteBook book = new OZ_NoteBook();
+        if (pda.OZ_NotesJson() == "")
+            return book;
+
+        // КОПІЯ ПЕРЕД ВИХОДОМ: книжка залишає цю функцію живою, а викликач
+        // дописує, ріже й серіалізує її назад (шапка OZ_ConfigBase ядра).
+        string err;
+        OZ_NoteBook parsed = new OZ_NoteBook();
+        if (JsonFileLoader<OZ_NoteBook>.LoadData(pda.OZ_NotesJson(), parsed, err) && parsed && parsed.Notes)
+            return parsed.Copy();
+
+        OZ_Log.Warn("notes: unreadable book on " + pda.GetType() + ", refusing to write over it (" + err + ")");
+        unreadable = true;
+        return book;
+    }
+}
+
 // -------------------------------------------------------------- сторінка
 
 class OZ_PdaHandlerNotes : OZ_PageHandler
@@ -104,22 +134,23 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         return "";
     }
 
-    // Книжка пристрою. Нечитна -- починаємо чисту, але слід у лозі
-    // лишається: мовчки згубити чиїсь записки не можна.
+    // Книжка пристрою для ЧИТАННЯ: нечитна показується порожньою.
     private OZ_NoteBook BookOf(OZ_PDA_Base pda)
     {
-        OZ_NoteBook book = new OZ_NoteBook();
-        if (pda.OZ_NotesJson() == "")
-            return book;
+        bool unreadable;
+        return OZ_PdaNoteBook.Load(pda, unreadable);
+    }
 
-        // КОПІЯ ПЕРЕД ВИХОДОМ: книжка залишає цю функцію живою, а викликач
-        // дописує, ріже й серіалізує її назад (шапка OZ_ConfigBase ядра).
-        string err;
-        OZ_NoteBook parsed = new OZ_NoteBook();
-        if (JsonFileLoader<OZ_NoteBook>.LoadData(pda.OZ_NotesJson(), parsed, err) && parsed && parsed.Notes)
-            return parsed.Copy();
-
-        OZ_Log.Warn("notes: unreadable book on " + pda.GetType() + ", starting fresh (" + err + ")");
+    // Книжка для ЗАПИСУ: нечитну не перезаписуємо (див. OZ_PdaNoteBook).
+    private OZ_NoteBook BookForWrite(OZ_PDA_Base pda, out string error)
+    {
+        bool unreadable;
+        OZ_NoteBook book = OZ_PdaNoteBook.Load(pda, unreadable);
+        if (unreadable)
+        {
+            error = "STR_OZ_ERR_NOTES_CORRUPT";
+            return null;
+        }
         return book;
     }
 
@@ -300,7 +331,9 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
         incoming.Title = OZ_Text.Clip(incoming.Title, OZ_PdaTune.NoteTitleMax());
         incoming.Body  = OZ_Text.Clip(incoming.Body, OZ_PdaTune.NoteBodyMax());
 
-        OZ_NoteBook book = BookOf(pda);
+        OZ_NoteBook book = BookForWrite(pda, error);
+        if (!book)
+            return "";
 
         int at = -1;
         if (incoming.Id != "")
@@ -380,7 +413,9 @@ class OZ_PdaHandlerNotes : OZ_PageHandler
             return "";
         }
 
-        OZ_NoteBook book = BookOf(pda);
+        OZ_NoteBook book = BookForWrite(pda, error);
+        if (!book)
+            return "";
 
         int at = -1;
         for (int i = 0; i < book.Notes.Count(); i++)

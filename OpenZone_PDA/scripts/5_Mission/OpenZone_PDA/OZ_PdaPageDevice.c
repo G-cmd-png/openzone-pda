@@ -6,7 +6,6 @@
 class OZ_PdaPageDevice : OZ_PdaPage
 {
     private int m_Beat = 0;
-    private ItemPreviewWidget m_Preview;
     private Widget m_ChargeBar;
     private Widget m_ChargeFill;
     private ButtonWidget m_BtnPower;
@@ -36,6 +35,8 @@ class OZ_PdaPageDevice : OZ_PdaPage
     // Розібране прев'ю чипа: рядок списку -> (секція, місце в ній).
     private ref OZ_MarkerList  m_CarMarks;
     private ref OZ_NoteBook    m_CarNotes;
+    // Маршрут чипа -- ОДНИМ рядком списку: сервер бере нитку лише цілою.
+    private ref OZ_MarkerList  m_CarRoute;
     private ref array<string>  m_CarRowKind = new array<string>();
     private ref array<int>     m_CarRowIndex = new array<int>();
     private int m_CarSelRow = -1;
@@ -70,7 +71,6 @@ class OZ_PdaPageDevice : OZ_PdaPage
         SetText("BtnCarDelText", "#STR_OZ_DEV_CAR_DEL");
         m_BtnHudEdit = ButtonWidget.Cast(Wgt("BtnHudEdit"));
         SetText("BtnHudEditText", "#STR_OZ_DEV_HUD_EDIT");
-        m_Preview    = ItemPreviewWidget.Cast(Wgt("Preview"));
         // Смугу заряду породжує примітив bar: доріжка ChargeBar і її
         // наповнення ChargeBarFill -- ім'я дає генератор, не рука.
         m_ChargeBar  = Wgt("ChargeBar");
@@ -353,7 +353,30 @@ class OZ_PdaPageDevice : OZ_PdaPage
             return;
         }
 
-        if (op == "carrier_write" || op == "carrier_erase")
+        if (op == "carrier_write")
+        {
+            if (!ok)
+            {
+                SetHintSticky("CarrierText", "#" + error);
+            }
+            else
+            {
+                // Малий чип бере ПЕРШІ записи, скільки влізло, і відповідь
+                // каже скільки з скількох (OZ_CarrierTaken). Частковий запис
+                // -- НЕ "Done.": решта лишилась тільки в приладі, і гравець,
+                // що віддасть чип, мусить знати, що віддає не все.
+                OZ_CarrierTaken wt = new OZ_CarrierTaken();
+                string wterr;
+                if (JsonFileLoader<OZ_CarrierTaken>.LoadData(json, wt, wterr) && wt && wt.Taken < wt.Total)
+                    SetHintSticky("CarrierText", "#STR_OZ_DEV_CAR_WRITTEN  " + wt.Taken.ToString() + "/" + wt.Total.ToString());
+                else
+                    SetHintSticky("CarrierText", "#STR_OZ_DEV_CARRIER_DONE");
+            }
+            Request();
+            return;
+        }
+
+        if (op == "carrier_erase")
         {
             if (ok)
                 SetHintSticky("CarrierText", "#STR_OZ_DEV_CARRIER_DONE");
@@ -373,18 +396,15 @@ class OZ_PdaPageDevice : OZ_PdaPage
 
         if (op == "initiate")
         {
+            // Успіх сторінка НЕ обробляє. Стрічка вкладок будується один раз
+            // за відкриття, а в нової сесії їх більше, тож меню закривається
+            // -- але САМЕ, наступним кадром (OZ_PdaMenu.HandleResponse,
+            // CloseLater). Тут стояв синхронний menu.Close(): меню віддає
+            // відповідь сторінці ПЕРШОЮ, а після повернення саме обробляє той
+            // самий "initiate" -- тобто працювало б далі на вже зруйнованому
+            // об'єкті.
             if (!ok)
-            {
                 SetHintSticky("SessionText", "#" + error);
-                return;
-            }
-
-            // Стрічка вкладок будується ОДИН раз за відкриття, і в нової
-            // сесії їх більше: закриваємо меню, наступне відкриття збере
-            // повний набір.
-            OZ_PdaMenu menu = OZ_PdaMenu.Cast(GetGame().GetUIManager().FindMenu(OZ_PdaConst.MENU_PDA));
-            if (menu)
-                menu.Close();
             return;
         }
 
@@ -505,31 +525,12 @@ class OZ_PdaPageDevice : OZ_PdaPage
         else
             SetText("TitlePlace", "#STR_OZ_DEV_STOWED");
 
-        // Показуємо СПРАВЖНІЙ предмет, а не абстрактний екземпляр класу:
-        // SetItem бере сутність, і завдяки цьому у прев'ю видно вставлені
-        // модулі й батарею, а не порожній корпус.
-        if (m_Preview)
-        {
-            EntityAI dev = OZ_PdaClient.Device(st);
-            if (dev)
-            {
-                m_Preview.SetItem(dev);
-                // SetView ОБОВ'ЯЗКОВИЙ: без нього прев'ю не малює нічого.
-                // Індекс беремо в самого предмета, як це робить ванільна
-                // сітка інвентаря (inventorygrid.c:215).
-                m_Preview.SetView(dev.GetViewIndex());
-                // Легкий поворот: пристрій анфас читається як плоска пляма.
-                m_Preview.SetModelOrientation(Vector(0, 12, 0));
-                m_Preview.Show(true);
-            }
-            else
-            {
-                // Сутність клієнту ще не приїхала. Порожній віджет краще за
-                // чужу модель, що лишилась із минулого разу.
-                m_Preview.SetItem(null);
-                m_Preview.Show(false);
-            }
-        }
+        // ПРЕВ'Ю МОДЕЛІ ТУТ БІЛЬШЕ НЕМАЄ. ItemPreviewWidget отримував предмет
+        // на кожен статус, а PreviewPane схована розкладкою назавжди (рішення
+        // власника 2026-08-29): сторінка шукала сутність за мережевим id і
+        // малювала її туди, де її не бачив ніхто. Статус того id більше не
+        // везе, і OZ_PdaClient, що існував рівно заради цього пошуку, пішов
+        // слідом.
 
         PaintCharge(st);
         PaintBays(st);
@@ -643,9 +644,17 @@ class OZ_PdaPageDevice : OZ_PdaPage
 
         m_CarMarks = null;
         m_CarNotes = null;
+        m_CarRoute = null;
         m_CarRowKind.Clear();
         m_CarRowIndex.Clear();
         m_CarSelRow = -1;
+
+        // Свіжий список -- без вибору, і поштучні кнопки знову на місці:
+        // рядок маршруту ховає їх, поки вибраний (див. OnPageItemSelected).
+        if (m_BtnCarTake)
+            m_BtnCarTake.Show(true);
+        if (m_BtnCarDel)
+            m_BtnCarDel.Show(true);
 
         // Секції приїжджають уже об'єктами -- див. коментар в OZ_CarrierView.
         // Копія: рядок, який гравець вибере, читається ПІЗНІШЕ -- уже
@@ -655,6 +664,11 @@ class OZ_PdaPageDevice : OZ_PdaPage
 
         if (v.Notes && v.Notes.Notes)
             m_CarNotes = v.Notes.Copy();
+
+        // Третя секція -- маршрут. Досі сторінка її не бачила зовсім, і чип
+        // із самою ниткою відкривався порожнім списком, хоча IMPORT її бере.
+        if (v.Route && v.Route.Items)
+            m_CarRoute = v.Route.Copy();
 
         // Шапка -- місткість: «скільки з скількох» на кожну секцію. Стеля
         // 0 означає безліміт, і тоді число стоїть саме.
@@ -708,6 +722,20 @@ class OZ_PdaPageDevice : OZ_PdaPage
                     m_CarRowKind.Insert("note");
                     m_CarRowIndex.Insert(k);
                 }
+            }
+
+            // Маршрут -- ОДИН рядок на всю нитку, з числом точок: сервер
+            // бере її лише цілою (IMPORT замінює маршрут приладу), поштучно
+            // точок не віддає. Ключ перекладаємо САМІ: чи перекладає рушій
+            // #-ключі в рядках TextListboxWidget, не міряно.
+            if (m_CarRoute && m_CarRoute.Items.Count() > 0)
+            {
+                string rlabel = Widget.TranslateString("#STR_OZ_DEV_CAR_ROUTE");
+                rlabel += " " + m_CarRoute.Items.Count().ToString();
+                int rrow = m_CarList.AddItem("[R] " + rlabel, NULL, 0);
+                m_CarList.SetItemColor(rrow, 0, OZ_Palette.ACCENT);
+                m_CarRowKind.Insert("route");
+                m_CarRowIndex.Insert(0);
             }
         }
 
@@ -771,6 +799,35 @@ class OZ_PdaPageDevice : OZ_PdaPage
                 body = n.Body;
             }
         }
+        else if (m_CarRowKind[row] == "route" && m_CarRoute)
+        {
+            // Уся нитка точка за точкою, по порядку проходження: саме це
+            // ляже в прилад замість його маршруту, якщо натиснути IMPORT.
+            head = Widget.TranslateString("#STR_OZ_DEV_CAR_ROUTE");
+            head += " " + m_CarRoute.Items.Count().ToString();
+            for (int p = 0; p < m_CarRoute.Items.Count(); p++)
+            {
+                OZ_MapMarker rp = m_CarRoute.Items[p];
+                if (!rp)
+                    continue;
+
+                vector rat = rp.Pos.ToVector();
+                if (body != "")
+                    body += "\n";
+                body += (p + 1).ToString() + ". " + rp.Name;
+                body += "  @ " + Math.Round(rat[0]).ToString() + " " + Math.Round(rat[2]).ToString();
+            }
+        }
+
+        // TAKE і DEL -- поштучні, а нитку поштучно сервер не бере й не
+        // стирає (carrier_take/carrier_del знають лише "mark" і "note"). На
+        // рядку маршруту кнопок немає -- замість кнопок, що завжди
+        // відмовляють; бере його IMPORT, цілим.
+        bool perItem = (m_CarRowKind[row] != "route");
+        if (m_BtnCarTake)
+            m_BtnCarTake.Show(perItem);
+        if (m_BtnCarDel)
+            m_BtnCarDel.Show(perItem);
 
         SetText("CarItemHead", head);
         SetCarBody(body);
@@ -834,6 +891,15 @@ class OZ_PdaPageDevice : OZ_PdaPage
                     parts += "/" + st.CarrierMaxRecords.ToString();
             }
 
+            // Третя секція -- маршрут: точки, а не записи (на чипі він коштує
+            // один запис), тож стелі класу поруч не ставимо.
+            if (st.CarrierRoute >= 0)
+            {
+                if (parts != "")
+                    parts += "   ";
+                parts += "#STR_OZ_DEV_CAR_ROUTE_PTS " + st.CarrierRoute.ToString();
+            }
+
             if (parts == "")
                 parts = "#STR_OZ_DEV_CARRIER_UNKNOWN";
 
@@ -881,37 +947,46 @@ class OZ_PdaPageDevice : OZ_PdaPage
             s += "  " + OZ_LocalTime.Stamp(st.SnapshotAt);
 
             // Капсула часу: що встиг запам'ятати пристрій, поки був живим.
-            if (st.Snapshot != "")
+            //
+            // Знімок їде ОБ'ЄКТОМ у самому статусі (Snap), а не рядком-JSON,
+            // і його глибоку копію вже зробив m_Status -- другого розбору тут
+            // немає. Сама наявність об'єкта ще не доказ: ref-член, якого немає
+            // в JSON, розбирач віддає виділеним і обнуленим
+            // (persistence-networking.md), тож «знімок є» кажуть його поля.
+            OZ_PdaSnapshot snap = st.Snap;
+            bool snapHas = false;
+            if (snap)
             {
-                OZ_PdaSnapshot snap = new OZ_PdaSnapshot();
-                string serr;
-                if (JsonFileLoader<OZ_PdaSnapshot>.LoadData(st.Snapshot, snap, serr) && snap)
+                if (snap.Owner != "" || snap.Base != "" || snap.Org != "")
+                    snapHas = true;
+                if (snap.Contacts && snap.Contacts.Count() > 0)
+                    snapHas = true;
+            }
+
+            if (snapHas)
+            {
+                s += "\n#STR_OZ_DEV_SNAP_OWNER " + snap.Owner;
+                // ОБИДВІ осі в дужках, через кому: «(Сталкер, Долг)».
+                // Показати саму лише організацію означало б, що одинак
+                // у капсулі виглядає безіменним, хоча про нього відомо
+                // рівно стільки ж, скільки про борговця.
+                string who = snap.Base;
+                if (snap.Org != "")
                 {
-                    // Копія: нижче все читається через склейки рядків.
-                    snap = snap.Copy();
-                    s += "\n#STR_OZ_DEV_SNAP_OWNER " + snap.Owner;
-                    // ОБИДВІ осі в дужках, через кому: «(Сталкер, Долг)».
-                    // Показати саму лише організацію означало б, що одинак
-                    // у капсулі виглядає безіменним, хоча про нього відомо
-                    // рівно стільки ж, скільки про борговця.
-                    string who = snap.Base;
-                    if (snap.Org != "")
-                    {
-                        if (who != "")
-                            who += ", ";
-                        who += snap.Org;
-                    }
                     if (who != "")
-                        s += " (" + who + ")";
-                    if (snap.Contacts && snap.Contacts.Count() > 0)
+                        who += ", ";
+                    who += snap.Org;
+                }
+                if (who != "")
+                    s += " (" + who + ")";
+                if (snap.Contacts && snap.Contacts.Count() > 0)
+                {
+                    s += "\n#STR_OZ_DEV_SNAP_CONTACTS " + snap.Contacts.Count().ToString() + ": ";
+                    for (int ci = 0; ci < snap.Contacts.Count(); ci++)
                     {
-                        s += "\n#STR_OZ_DEV_SNAP_CONTACTS " + snap.Contacts.Count().ToString() + ": ";
-                        for (int ci = 0; ci < snap.Contacts.Count(); ci++)
-                        {
-                            if (ci > 0)
-                                s += ", ";
-                            s += snap.Contacts[ci];
-                        }
+                        if (ci > 0)
+                            s += ", ";
+                        s += snap.Contacts[ci];
                     }
                 }
             }

@@ -109,6 +109,12 @@ class OZ_PdaConst
     // Стеля повідомлення -- клієнтові, щоб лічильник рахував за тим самим
     // числом, що й сервер (ТЗ-4 R-D1.3).
     static const string SYNC_MSG_MAX = "pda.msg_max";
+    // Скільки модульних відсіків дає профіль кожному класу КПК, рядком
+    // "<клас>:<число>;..." (див. OZ_PdaProfiles.ClientSlots). Інвентар гри
+    // питає про видимість гнізда САМЕ КЛІЄНТА, а профілі живуть лише на
+    // сервері -- без цього числа клієнт показував три відсіки будь-якому
+    // приладу, і плата, покладена в «зайвий», мовчки не працювала.
+    static const string SYNC_SLOTS   = "pda.slots";
     static const string PAGE_QUESTS = "quests";
     static const string PAGE_CONTACTS = "contacts";
     static const string PAGE_NOTES    = "notes";

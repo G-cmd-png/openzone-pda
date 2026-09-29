@@ -493,6 +493,15 @@ class OZ_PdaHardware
     // лишається головнішим: Insert не чіпає клас, який уже є у файлі.
     private static ref array<ref OZ_ModuleSpec> s_Declared;
 
+    // ПОКОЛІННЯ КОНФІГА: росте з кожним завантаженням і з кожним чужим
+    // оголошенням, що лягло. Ввімкнений прилад звіряє його у своєму OnWork і
+    // перераховує витрату, коли число інше (OZ_PDA_Base.OZ_CfgFollow), --
+    // інакше гаряче застосування з VPP доходило до приладу лише з його
+    // наступним вмиканням.
+    private static int s_Gen = 0;
+
+    static int Gen() { return s_Gen; }
+
     static OZ_PdaHardwareConfig Get()      { return s_Cfg; }
 
     static int ModuleCount()
@@ -539,6 +548,8 @@ class OZ_PdaHardware
         {
             OZ_Log.Warn("hardware: Hardware.json is not writable, foreign module declarations stay in memory only");
         }
+
+        s_Gen++;
     }
 
     // Чуже залізо. Мод, що приносить свій модуль, оголошує його ОДНИМ рядком
@@ -579,6 +590,8 @@ class OZ_PdaHardware
         // ПЕРШИМ, оголошення не проходить через ServerLoad, і без цього рядка
         // файл наздогнав би пам'ять лише наступним перечитуванням.
         bool added = Insert(spec);
+        if (added)
+            s_Gen++;
         if (added && s_Writable)
         {
             OZ_ConfigLoader<OZ_PdaHardwareConfig>.Save(OZ_PdaConst.HARDWARE, "Hardware", s_Cfg);

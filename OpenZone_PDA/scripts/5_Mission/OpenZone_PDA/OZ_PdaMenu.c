@@ -26,9 +26,11 @@ class OZ_PdaMenu : UIScriptedMenu
     private string m_Current = "";
     private bool m_Built = false;
 
-    // Чи був увімкнений ванільний інтерфейс до відкриття КПК. Повертаємо
-    // САМЕ ЦЕ, а не «увімкнено» -- див. OnShow/OnHide.
+    // Якою була КОРЕНЕВА панель ванільного HUD до відкриття КПК, і чи ховали
+    // ми її в цьому показі взагалі. Повертаємо САМЕ ЦЕ, а не «увімкнено» --
+    // див. OnShow/OnHide.
     private bool m_HudWasShown = true;
+    private bool m_HudHid = false;
 
     private ref Timer m_Refresh;
 
@@ -147,17 +149,42 @@ class OZ_PdaMenu : UIScriptedMenu
 
         SetFocus(layoutRoot);
 
-        array<string> excludes = new array<string>();
-        excludes.Insert("menu");
-        GetGame().GetMission().AddActiveInputExcludes(excludes);
+        // МІСІЮ Й HUD БЕРЕМО ЧЕРЕЗ ЗМІННУ Й ПЕРЕВІРЯЄМО ОБИДВА -- той самий
+        // вартовий, що в OZ_LinkMenu ядра. Ланцюжок GetMission().GetHud() без
+        // перевірок ядро вже ловило на ACCESS_VIOLATION: на смерті рушій
+        // розбирає місію разом із HUD раніше, ніж закриває наші меню.
+        Mission mission = GetGame().GetMission();
+        if (mission)
+        {
+            array<string> excludes = new array<string>();
+            excludes.Insert("menu");
+            mission.AddActiveInputExcludes(excludes);
 
-        // ЗАПАМ'ЯТОВУЄМО, ЯК БУЛО, і повертаємо саме це.
-        //
-        // OnHide безумовно вмикав ванільний інтерфейс назад -- тобто гравець,
-        // який сам його сховав (клавіша HUD), після кожного закриття КПК
-        // отримував його назад і мусив ховати знову.
-        m_HudWasShown = HudWasShown();
-        GetGame().GetMission().GetHud().Show(false);
+            // ЗАПАМ'ЯТОВУЄМО, ЯК БУЛО, і повертаємо саме це.
+            //
+            // OnHide безумовно вмикав ванільний інтерфейс назад -- тобто
+            // гравець, який сам його сховав (клавіша HUD), після кожного
+            // закриття КПК отримував його назад і мусив ховати знову.
+            //
+            // Пам'ятаємо ВИДИМІСТЬ ПАНЕЛІ, а не прапорці контексту: Hud.Show()
+            // гасить і вмикає кореневу панель, а клавіша HUD і налаштування
+            // ставлять лише прапорці, які ховають її частини (ingamehud.c:370
+            // проти :900-927). Коли запам'ятовували прапорці, гравець із
+            // прихованим клавішею HUD отримував на закритті Show(false) -- і
+            // разом із панеллю зникали приціл, підказки дій, швидкий слот і
+            // витривалість, до перепідключення.
+            //
+            // Повторний OnShow без OnHide між ними не перезаписує пам'ять:
+            // інакше він запам'ятав би вже НАМИ сховану панель.
+            Hud hud = mission.GetHud();
+            if (hud)
+            {
+                if (!m_HudHid)
+                    m_HudWasShown = HudPanelShown(hud);
+                hud.Show(false);
+                m_HudHid = true;
+            }
+        }
 
         OZ_ClientState.BindListener(new OZ_PdaMenuListener(this));
 
@@ -176,6 +203,12 @@ class OZ_PdaMenu : UIScriptedMenu
         m_PinBuffer = "";
         m_PinOld    = "";
         m_PinNew    = "";
+
+        // Відлік злому й відлік блокування -- теж стан приладу, а не вікна:
+        // минуле відкриття могло скінчитись посеред будь-якого з них.
+        m_CrackLive = false;
+        DisarmLockout();
+        m_HintLockout = false;
 
         // ПРИВ'ЯЗКА ДО ПРИЛАДУ -- ТУТ І ЛИШЕ ТУТ.
         //
@@ -227,10 +260,25 @@ class OZ_PdaMenu : UIScriptedMenu
         // застає її порожньою й ставить свою.
         m_Device = null;
 
+        // Той самий вартовий, що в OnShow. Сюди приходять і зі смерті
+        // (UIScriptedMenu.OnPlayerDeath -> Close), і коли цей ланцюжок не
+        // спрацював -- тоді OnHide може настати вже тоді, коли місії чи HUD
+        // немає, і звернення до них валило клієнта.
+        bool hudHid = m_HudHid;
+        m_HudHid = false;
+
+        Mission mission = GetGame().GetMission();
+        if (!mission)
+            return;
+
         array<string> excludes = new array<string>();
         excludes.Insert("menu");
-        GetGame().GetMission().RemoveActiveInputExcludes(excludes, true);
-        GetGame().GetMission().GetHud().Show(m_HudWasShown);
+        mission.RemoveActiveInputExcludes(excludes, true);
+
+        // Повертаємо ЛИШЕ те, що самі сховали, і рівно таким, яким воно було.
+        Hud hud = mission.GetHud();
+        if (hud && hudHid)
+            hud.Show(m_HudWasShown);
     }
 
     // Закритись НАСТУПНИМ КАДРОМ. Для тих, кого кличуть зсередини чужого
@@ -241,36 +289,34 @@ class OZ_PdaMenu : UIScriptedMenu
         GetGame().GetCallQueue(CALL_CATEGORY_GUI).CallLater(this.Close, 0, false);
     }
 
-    // Чи ванільний інтерфейс був увімкнений ДО того, як ми його сховали.
+    // Чи видима ЗАРАЗ коренева панель ванільного HUD -- рівно той віджет,
+    // який гасить і вмикає Hud.Show() (IngameHud.Show -> m_HudPanelWidget,
+    // ingamehud.c:370). Дістаємо її публічним IngameHud.GetHudPanelWidget()
+    // -- так до неї ходить сама місія (missiongameplay.c:1143).
     //
-    // Питаємо прапорці контексту, а не сам віджет: панель захована ззовні
-    // (клавіша HUD, непритомність, відкрите чуже вікно) саме через них, і
-    // IngameHud.Cast -- той самий шлях, яким до них ходить ваниль.
-    private bool HudWasShown()
+    // Прапорці контексту (HUD_HIDE, HUD_DISABLE) тут питати не можна: вони
+    // ховають ЧАСТИНИ панелі (IngameHudVisibility), а не її саму, і
+    // повертати панелі їхнє значення означало гасити її цілком.
+    //
+    // Чужий нащадок Hud без цієї панелі -- «була видима», як і раніше.
+    private bool HudPanelShown(Hud hud)
     {
-        IngameHud hud = IngameHud.Cast(GetGame().GetMission().GetHud());
-        if (!hud)
+        IngameHud ingame = IngameHud.Cast(hud);
+        if (!ingame)
             return true;
 
-        IngameHudVisibility vis = hud.GetHudVisibility();
-        if (!vis)
+        Widget panel = ingame.GetHudPanelWidget();
+        if (!panel)
             return true;
 
-        // По одній перевірці на рядок: умова `if` у Enforce мусить уміщатися
-        // в один рядок, перенесення дає "Expected ')', not a '||'".
-        if (vis.IsContextFlagActive(EHudContextFlags.HUD_HIDE))
-            return false;
-        if (vis.IsContextFlagActive(EHudContextFlags.HUD_DISABLE))
-            return false;
-
-        return true;
+        return panel.IsVisible();
     }
 
     // Кеш для тикових рішень: коли востаннє питали і що бачили netsync.
     private int  m_LastStatusAskMs = 0;
     private int  m_LastSealedAskMs = 0;
     private bool m_SawOn = false;
-    private bool m_SawUnlocked = false;
+    private bool m_SawLocked = false;
     private bool m_CrackLive = false;
 
     void RefreshTick()
@@ -304,10 +350,28 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
         }
 
+        // МЕРТВИЙ, НЕПРИТОМНИЙ ЧИ ЗВ'ЯЗАНИЙ -- ЕКРАН ТЕЖ ІДЕ.
+        //
+        // Прилад у руках іще не означає рук, які ним користуються: труп
+        // тримає, що тримав, а непритомний у машині нічого не впускає.
+        // Сервер таким відправникам уже відмовляє (OZ_PdaAccess.Check), тож
+        // вікно тільки збирало б відмови. Смерть ваніль закриває й сама
+        // (UIScriptedMenu.OnPlayerDeath), і тут -- запасний шлях, як
+        // OZ_LinkGate.Tick у ядрі.
+        if (!OZ_PdaMenuOpener.CanUse(who))
+        {
+            OZ_Log.Dbg("pda: the holder is dead, unconscious or restrained, closing the screen");
+            CloseLater();
+            return;
+        }
+
         // Годинник і заряд -- ЛОКАЛЬНІ: час світу і netsync-поле предмета.
         // Це й прибирає трафік, і чинить заморозку статус-бара на вкладках,
         // які статус не питають.
         LocalStatusTick();
+
+        // Відлік блокування коду -- свій, від дедлайну (див. m_LockedOut).
+        LockoutTick();
 
         // Поки стрічки немає, оновлювати нема кому: замкнений пристрій не
         // віддав жодної сторінки. Питаємо стан самі -- інакше відімкнення
@@ -336,12 +400,17 @@ class OZ_PdaMenu : UIScriptedMenu
             OZ_PDA_Base dev = m_Device;
             if (dev)
             {
-                bool on  = dev.OZ_IsOn();
-                bool unl = dev.OZ_IsUnlocked();
-                if (on != m_SawOn || unl != m_SawUnlocked)
+                // Замок -- за СИНХРОННИМ бітом (OZ_LockedForViewer). Тут
+                // стояв OZ_IsUnlocked(), а він читає рядок коду, якого
+                // клієнтові не везуть: на клієнті там завжди порожньо, тобто
+                // «відімкнено», і зміна замка цей перепит не будила ніколи --
+                // лишався тільки п'ятисекундний страховочний.
+                bool on     = dev.OZ_IsOn();
+                bool locked = dev.OZ_LockedForViewer();
+                if (on != m_SawOn || locked != m_SawLocked)
                     askNow = true;
                 m_SawOn = on;
-                m_SawUnlocked = unl;
+                m_SawLocked = locked;
             }
 
             int nowMs = GetGame().GetTime();
@@ -377,16 +446,28 @@ class OZ_PdaMenu : UIScriptedMenu
 
     void HandleResponse(string pageId, string op, bool ok, string json, string error)
     {
-        // Стрічку будує ПЕРША ж відповідь про пристрій -- і тільки один раз.
-        if (!m_Built && pageId == OZ_PdaConst.PAGE_DEVICE && op == "status" && ok)
-            BuildFrom(json);
-        else if (m_Built && pageId == OZ_PdaConst.PAGE_DEVICE && op == "status" && ok)
-            RebuildIfPagesChanged(json);
-
+        // ОДИН РОЗБІР НА ОДНУ ВІДПОВІДЬ. Той самий status розбирався чотири
+        // рази -- стрічка, її перезбирання, замок і смуга стану, -- і кожен
+        // читач сам ганяв JsonFileLoader по тому самому рядку. Тепер його
+        // розбирають тут, раз, і роздають об'єкт.
         if (pageId == OZ_PdaConst.PAGE_DEVICE && op == "status")
         {
-            ApplyLockState(ok, json, error);
-            PaintStatusBar(ok, json);
+            OZ_PdaDeviceStatus st = null;
+            if (ok)
+                st = ReadStatus(json);
+
+            // Стрічку будує ПЕРША ж відповідь про пристрій -- і тільки один
+            // раз; далі її лише звіряють.
+            if (st)
+            {
+                if (!m_Built)
+                    BuildFrom(st);
+                else
+                    RebuildIfPagesChanged(st);
+            }
+
+            ApplyLockState(ok, st, error);
+            PaintStatusBar(ok, st);
         }
 
         if (m_Pages.Contains(pageId))
@@ -404,7 +485,7 @@ class OZ_PdaMenu : UIScriptedMenu
             }
             else
             {
-                OnBadPin(error);
+                OnBadPin(error, json);
             }
         }
 
@@ -469,9 +550,26 @@ class OZ_PdaMenu : UIScriptedMenu
             }
             else
             {
-                OnBadPin(error);
+                OnBadPin(error, json);
             }
         }
+    }
+
+    // Розбір відповіді на status -- єдиний у меню.
+    //
+    // КОПІЯ, а не розібраний об'єкт: BuildFrom створює віджет на кожну
+    // вкладку, а Pages -- вкладений масив, який виділив серіалізатор, --
+    // читається і до цього, і після (шапка OZ_PdaTypes).
+    private OZ_PdaDeviceStatus ReadStatus(string json)
+    {
+        string err;
+        OZ_PdaDeviceStatus parsed = new OZ_PdaDeviceStatus();
+        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, parsed, err))
+        {
+            OZ_Log.Error("device status unreadable: " + err);
+            return null;
+        }
+        return parsed.Copy();
     }
 
     // НАБІР СТОРІНОК МІНЯЄТЬСЯ ЗА ЖИТТЯ ВІКНА, і стрічка мусить за ним іти.
@@ -485,13 +583,9 @@ class OZ_PdaMenu : UIScriptedMenu
     //
     // Прилад сам штовхає стан на кожне під'єднання й від'єднання
     // (OZ_PDA_Base.EEItemAttached -> PushState), тож окремого опиту не треба.
-    private void RebuildIfPagesChanged(string json)
+    private void RebuildIfPagesChanged(OZ_PdaDeviceStatus st)
     {
-        string err;
-        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
-            return;
-        if (!st.Pages)
+        if (!st || !st.Pages)
             return;
 
         // Порядок теж значущий: його задає профіль, і зміна порядку -- це
@@ -516,7 +610,7 @@ class OZ_PdaMenu : UIScriptedMenu
         string keep = m_Current;
 
         DropPages();
-        BuildFrom(json);
+        BuildFrom(st);
 
         if (keep != "" && m_Pages.Contains(keep))
             Select(keep);
@@ -556,19 +650,12 @@ class OZ_PdaMenu : UIScriptedMenu
     // Стрічка, як її збудували: за нею й звіряємось.
     private ref array<string> m_PageOrder = new array<string>();
 
-    private void BuildFrom(string json)
+    // st -- уже КОПІЯ (ReadStatus): нижче AddTab створює віджет на кожну
+    // вкладку, а Pages читається і перед цим, і після.
+    private void BuildFrom(OZ_PdaDeviceStatus st)
     {
-        string err;
-        OZ_PdaDeviceStatus parsed = new OZ_PdaDeviceStatus();
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, parsed, err))
-        {
-            OZ_Log.Error("device status unreadable while building tabs: " + err);
+        if (!st || !st.Pages)
             return;
-        }
-
-        // Копія: нижче AddTab створює віджет на кожну вкладку, а Pages
-        // читається ще й після цього -- і перед цим, і після.
-        OZ_PdaDeviceStatus st = parsed.Copy();
 
         // ЗАЩІПКА СТАВИТЬСЯ В КІНЦІ, і лише коли стрічка справді з'явилась.
         //
@@ -795,7 +882,7 @@ class OZ_PdaMenu : UIScriptedMenu
 
     // ---------------------------------------------------------------- замок
 
-    private void ApplyLockState(bool ok, string json, string error)
+    private void ApplyLockState(bool ok, OZ_PdaDeviceStatus st, string error)
     {
         if (!m_LockPanel)
             return;
@@ -832,13 +919,11 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
         }
 
-        string err;
-        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err))
+        if (!st)
             return;
 
         m_HasPin = st.HasPin;
-        SetPinLength(st.PinLength);
+        SetPinLengths(st.PinLength, st.NewPinLength);
 
         // Нічийний пристрій -- ЕКРАН ІНІЦІАЦІЇ замість сторінок: після
         // factory reset (чи зі свіжим приладом) єдина доступна дія --
@@ -865,19 +950,13 @@ class OZ_PdaMenu : UIScriptedMenu
             if (m_PinMode != "unlock")
                 BeginPin("unlock");
 
-            TextWidget hint = TextWidget.Cast(layoutRoot.FindAnyWidget("LockHint"));
-            if (hint)
-            {
-                if (st.LockedOut)
-                {
-                    string wait = Widget.TranslateString("#STR_OZ_LOCK_TOO_MANY");
-                    if (st.LockWaitS > 0)
-                        wait += "  (" + st.LockWaitS.ToString() + " s)";
-                    hint.SetText(wait);
-                }
-                else
-                    hint.SetText("#STR_OZ_PIN_HINT");
-            }
+            // Відлік -- той самий, що з відмов і з `sealed`: один дедлайн і
+            // одне місце, яке його малює.
+            if (st.LockedOut)
+                ArmLockout(st.LockWaitS);
+            else
+                DisarmLockout();
+            PaintPinPrompt("");
             return;
         }
 
@@ -983,11 +1062,20 @@ class OZ_PdaMenu : UIScriptedMenu
         // спитає status і збудує стрічку. Окремого сигналу «зламано» не
         // треба саме тому.
         m_Sealed = st.Sealed;
-        SetPinLength(st.PinLength);
+        SetPinLengths(st.PinLength, st.NewPinLength);
 
         // Поки йде злам, RefreshTick питає sealed щосекунди (живий відлік);
         // без зламу -- раз на 5 секунд, екран коду статичний.
         m_CrackLive = st.Cracking;
+
+        // Ця відповідь -- єдина, яку замкнений прилад отримує сам, тож і про
+        // блокування вона каже першою. Кожна наступна звіряє дедлайн із
+        // сервером. Малюється відлік нижче, коли ясно, що підказка не
+        // зайнята зламом чи печаткою.
+        if (st.LockedOut)
+            ArmLockout(st.LockWaitS);
+        else
+            DisarmLockout();
 
         ButtonWidget crack = ButtonWidget.Cast(layoutRoot.FindAnyWidget("BtnCrack"));
         Widget pad = layoutRoot.FindAnyWidget("LockPad");
@@ -1021,6 +1109,7 @@ class OZ_PdaMenu : UIScriptedMenu
                 string left = "#STR_OZ_CRACKING";
                 left += "   " + st.CrackLeftSec.ToString() + " s";
                 hint.SetText(left);
+                m_HintLockout = false;
             }
             return;
         }
@@ -1042,9 +1131,27 @@ class OZ_PdaMenu : UIScriptedMenu
         if (hint)
         {
             if (st.Sealed && !st.HasDecryptor)
+            {
                 hint.SetText("#STR_OZ_SEALED_NEED");
+                m_HintLockout = false;
+            }
             else if (st.Sealed)
+            {
                 hint.SetText("");
+                m_HintLockout = false;
+            }
+        }
+
+        // Звичайний замкнений прилад, злому немає: під падом -- відлік
+        // блокування, поки воно триває. Щойно сервер сказав «скінчилось» --
+        // звичайна підказка, але лише замість НАШОГО відліку: помилку, яку
+        // щойно показала відмова, ця відповідь не затирає.
+        if (!st.Sealed)
+        {
+            if (LockoutLive())
+                PaintLockHint();
+            else if (m_HintLockout)
+                PaintPinPrompt("");
         }
     }
 
@@ -1088,6 +1195,15 @@ class OZ_PdaMenu : UIScriptedMenu
                 label.SetText("#STR_OZ_PIN_REPEAT");
         }
 
+        // Звичайна підказка під час блокування -- це саме блокування: «цифри,
+        // Enter» кликали б набирати код, якого зараз не слухатимуть.
+        if (hintKey == "" && LockoutLive())
+        {
+            PaintLockHint();
+            return;
+        }
+
+        m_HintLockout = false;
         TextWidget hint = TextWidget.Cast(layoutRoot.FindAnyWidget("LockHint"));
         if (hint)
         {
@@ -1096,6 +1212,104 @@ class OZ_PdaMenu : UIScriptedMenu
             else
                 hint.SetText("#STR_OZ_PIN_HINT");
         }
+    }
+
+    // ------------------------------------------------------- блокування коду
+
+    // ВІДЛІК БЛОКУВАННЯ -- ЛОКАЛЬНИЙ, ВІД ДЕДЛАЙНУ.
+    //
+    // Відлік жив лише у вдалій відповіді на status, а замкнений прилад її не
+    // отримує ніколи: ворота відмовляють раніше (STR_OZ_ERR_LOCKED). Гравець,
+    // що вичерпав спроби, бачив «Хибний код» і набирав далі, не знаючи, що
+    // його не слухають. Тепер секунди везуть самі відмови unlock/setpin
+    // (STR_OZ_LOCK_TOO_MANY з тілом) і відповідь `sealed`, а далі меню рахує
+    // саме: дедлайн = зараз + LockWaitS (сервер округлює вгору, див.
+    // ArmLockout), і секундний RefreshTick перемальовує підказку. Кожна нова
+    // відповідь сервера ставить дедлайн заново.
+    //
+    // Дедлайн нуль -- рахувати нема чого: блок до рестарту сервера або тіло
+    // відмови не прочиталось. Тоді пишемо саму причину, без числа, і чекаємо
+    // наступного слова сервера.
+    private bool m_LockedOut   = false;
+    private int  m_LockUntilMs = 0;
+
+    // Чи підказка пада ЗАРАЗ показує саме відлік. Такт перемальовує лише
+    // свій текст: помилку, яку щойно сказав сервер, він не затирає.
+    private bool m_HintLockout = false;
+
+    private void ArmLockout(int waitS)
+    {
+        // Нуль сервер пише лише для блоку до рестарту, але сюди ж падає
+        // відмова, чиє тіло не прочиталось. Якщо дедлайн цього ж блокування
+        // вже відомий -- це друге: лишаємо живий відлік, а не міняємо його на
+        // безстрокове «забагато спроб».
+        if (waitS <= 0 && LockoutLive() && m_LockUntilMs != 0)
+            return;
+
+        m_LockedOut   = true;
+        m_LockUntilMs = 0;
+
+        // Сервер округлює секунди вгору (OZ_PDA_Base.OZ_LockWaitSec), тож
+        // справжній залишок не більший за LockWaitS: нуль клієнта не настає
+        // раніше за нуль сервера, і код, набраний на нулі, сервер уже слухає.
+        // Секунду зверху клієнт більше не додає -- з нею свіжі 300 с
+        // показувались як «301 s».
+        if (waitS > 0)
+            m_LockUntilMs = GetGame().GetTime() + waitS * 1000;
+    }
+
+    private void DisarmLockout()
+    {
+        m_LockedOut   = false;
+        m_LockUntilMs = 0;
+    }
+
+    // Чи блокування ще триває. Минулий дедлайн знімає його тут-таки: хто б
+    // не спитав, бачить ту саму правду, а не чекає на такт.
+    private bool LockoutLive()
+    {
+        if (!m_LockedOut)
+            return false;
+
+        if (m_LockUntilMs != 0 && GetGame().GetTime() >= m_LockUntilMs)
+        {
+            DisarmLockout();
+            return false;
+        }
+        return true;
+    }
+
+    private void PaintLockHint()
+    {
+        TextWidget hint = TextWidget.Cast(layoutRoot.FindAnyWidget("LockHint"));
+        if (!hint)
+            return;
+
+        string wait = Widget.TranslateString("#STR_OZ_LOCK_TOO_MANY");
+        if (m_LockUntilMs != 0)
+        {
+            // Угору до цілої секунди: «0 s» на екрані, поки код ще не
+            // слухають, було б неправдою.
+            int leftMs = m_LockUntilMs - GetGame().GetTime();
+            int secs = (leftMs + 999) / 1000;
+            if (secs > 0)
+                wait += "  (" + secs.ToString() + " s)";
+        }
+        hint.SetText(wait);
+        m_HintLockout = true;
+    }
+
+    // Секундний такт відліку (RefreshTick). Дійшов до нуля -- повертаємо
+    // звичайну підказку.
+    private void LockoutTick()
+    {
+        if (!m_HintLockout)
+            return;
+
+        if (LockoutLive())
+            PaintLockHint();
+        else
+            PaintPinPrompt("");
     }
 
     // Enter натиснуто. Що це означає -- залежить від режиму й кроку.
@@ -1214,7 +1428,7 @@ class OZ_PdaMenu : UIScriptedMenu
     // щосекунди з локальної сутності й ігрового годинника -- тобто ця половина
     // роботи жила рівно до наступного такту. Своє в цієї відповіді одне: чи
     // пристрій ще онлайн, бо це знає лише сервер.
-    private void PaintStatusBar(bool ok, string json)
+    private void PaintStatusBar(bool ok, OZ_PdaDeviceStatus st)
     {
         if (!m_StatusMid)
             return;
@@ -1225,9 +1439,7 @@ class OZ_PdaMenu : UIScriptedMenu
             return;
         }
 
-        string err;
-        OZ_PdaDeviceStatus st = new OZ_PdaDeviceStatus();
-        if (!JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, st, err) || !st)
+        if (!st)
             return;
 
         if (st.Online)
@@ -1267,7 +1479,7 @@ class OZ_PdaMenu : UIScriptedMenu
         if (digit != "0" && digit.ToInt() == 0)
             return false;
 
-        if (m_PinBuffer.Length() < m_PinLength)
+        if (m_PinBuffer.Length() < PadLength())
         {
             m_PinBuffer += digit;
             PaintPinDots();
@@ -1275,28 +1487,56 @@ class OZ_PdaMenu : UIScriptedMenu
         return true;
     }
 
-    // ДОВЖИНА КОДУ ПРИЇЖДЖАЄ З СЕРВЕРА (ТЗ-5 R-B3.3): поле профілю
-    // OZ_PdaDeviceStatus.PinLength. Тут стояла четвірка ТРЬОМА літералами --
-    // у наборі мишею, у крапках і на клавіатурі (OnKeyPress), -- і вона була
-    // ЄДИНИМ правилом на весь мод: сервер довжини не перевіряв узагалі.
+    // ДОВЖИНА КОДУ ПРИЇЖДЖАЄ З СЕРВЕРА (ТЗ-5 R-B3.3). Тут стояла четвірка
+    // ТРЬОМА літералами -- у наборі мишею, у крапках і на клавіатурі
+    // (OnKeyPress), -- і вона була ЄДИНИМ правилом на весь мод: сервер
+    // довжини не перевіряв узагалі.
     //
-    // Умовчання лишається, і воно те саме: відповідь від сервера, який про
-    // це поле ще не знає (нуль), не мусить лишати гравця з падом, що не
-    // приймає жодної цифри.
-    private int m_PinLength = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+    // ДОВЖИН ДВІ, і котра з них правило пада -- вирішує крок. Поки число
+    // було одне (довжина з профілю), адмін, що зменшив PinLength профілю з
+    // шести до чотирьох, лишав власників шестизначних кодів із падом, який
+    // шостої цифри вже не приймав: відімкнути свій прилад вони могли тільки
+    // скиданням. Тепер сервер каже обидва:
+    //
+    //   PinLength    -- код, що СТОЇТЬ на приладі: його набирають, щоб
+    //                   відімкнути, і його ж як СТАРИЙ при зміні чи знятті;
+    //   NewPinLength -- скільки цифр профіль вимагає від НОВОГО коду та
+    //                   його повтору.
+    //
+    // Нуль -- сервер не сказав: умовчання, а не пад, що не приймає жодної
+    // цифри.
+    private int m_PinLenCur = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+    private int m_PinLenNew = OZ_PdaConst.PIN_LENGTH_DEFAULT;
 
-    private void SetPinLength(int len)
+    private void SetPinLengths(int cur, int neu)
     {
-        if (len <= 0)
-            return;
-        if (len == m_PinLength)
+        int before = PadLength();
+
+        m_PinLenCur = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+        if (cur > 0)
+            m_PinLenCur = cur;
+
+        m_PinLenNew = OZ_PdaConst.PIN_LENGTH_DEFAULT;
+        if (neu > 0)
+            m_PinLenNew = neu;
+
+        if (PadLength() == before)
             return;
 
-        m_PinLength = len;
         // Набране до зміни -- уже не за тим правилом. Чистимо, а не ріжемо:
         // половина коду в буфері гірша за порожній.
         m_PinBuffer = "";
         PaintPinDots();
+    }
+
+    // Скільки цифр приймає пад САМЕ ЗАРАЗ. Новий код і його повтор -- лише
+    // на кроках 1 і 2 зміни; решта (відімкнути, старий код, зняти код) --
+    // код, що стоїть.
+    private int PadLength()
+    {
+        if (m_PinMode == "set" && m_PinStep > 0)
+            return m_PinLenNew;
+        return m_PinLenCur;
     }
 
     private void PaintPinDots()
@@ -1305,8 +1545,9 @@ class OZ_PdaMenu : UIScriptedMenu
         if (!dots)
             return;
 
+        int len = PadLength();
         string s = "";
-        for (int i = 0; i < m_PinLength; i++)
+        for (int i = 0; i < len; i++)
         {
             if (i < m_PinBuffer.Length())
                 s += "*";
@@ -1320,10 +1561,9 @@ class OZ_PdaMenu : UIScriptedMenu
     // писалось «Wrong code», і через це «пристрою немає» -- гравець помер, а
     // КПК лишився на трупі -- виглядало як невірний код. Півгодини пішло на
     // те, щоб зрозуміти, що вводити нема куди.
-    private void OnBadPin(string error)
+    private void OnBadPin(string error, string json)
     {
         m_PinBuffer = "";
-        PaintPinDots();
 
         // На кроці «повтори новий код» помилятись нема в чому -- сервер
         // відмовляє лише через СТАРИЙ код, тож повертаємо на його крок.
@@ -1333,6 +1573,35 @@ class OZ_PdaMenu : UIScriptedMenu
             m_PinOld  = "";
             m_PinNew  = "";
         }
+
+        // Крапки -- ПІСЛЯ кроку: довжина пада від нього залежить.
+        PaintPinDots();
+
+        // БЛОКУВАННЯ ПРИВОЗИТЬ СВІЙ ВІДЛІК. Відмова STR_OZ_LOCK_TOO_MANY несе
+        // тіло -- OZ_PdaDeviceStatus, де заповнені лише LockedOut і
+        // LockWaitS (решта полів -- умовчання, і читати їх не можна). Так
+        // само відповідає й остання хибна спроба, що щойно стала
+        // блокуванням. Тіла немає чи воно не читається -- причина без числа.
+        if (error == "STR_OZ_LOCK_TOO_MANY")
+        {
+            int waitS = 0;
+            if (json != "")
+            {
+                string err;
+                OZ_PdaDeviceStatus lo = new OZ_PdaDeviceStatus();
+                if (JsonFileLoader<OZ_PdaDeviceStatus>.LoadData(json, lo, err))
+                    waitS = lo.LockWaitS;
+            }
+
+            ArmLockout(waitS);
+            PaintPinPrompt("");
+            return;
+        }
+
+        // Будь-яка інша відповідь означає, що спробу розглянули або
+        // відмовили з іншої причини -- відлік, якщо й був, уже не правда.
+        // STR_OZ_ERR_SEALED лишається зі своїм текстом.
+        DisarmLockout();
 
         string why = "#STR_OZ_LOCK_WRONG";
         if (error != "")
@@ -1392,38 +1661,119 @@ class OZ_PdaMenu : UIScriptedMenu
             return true;
         }
 
-        // Код набирається лише поки відкритий екран коду.
-        if (m_PinMode != "")
+        // ЦИФР КОДУ ТУТ БІЛЬШЕ НЕМАЄ -- вони приходять через OnPinKey.
+        return super.OnKeyPress(w, x, y, key);
+    }
+
+    // КОД З КЛАВІАТУРИ -- З ГЛОБАЛЬНОГО ШЛЯХУ, а не з OnKeyPress меню.
+    //
+    // OnKeyPress(Widget ...) -- подія ВІДЖЕТА з фокусом, і на екрані коду її
+    // не отримував ніхто: зміряно на стенді 2026-09-28 -- фокус на корені
+    // (OnShow) чи на кнопці пада після справжнього кліку мишею, а цифри,
+    // подані в клієнт скан-кодами через SendInput (так само, як їх подає
+    // клавіатура), у пад не падали жодного разу; підказка ж обіцяла саме
+    // клавіатуру. Сире натискання рушій віддає DayZGame.OnKeyPress ->
+    // Mission.OnKeyPress(int) незалежно від фокуса, і звідти його сюди
+    // передає OZ_PdaMissionGameplay. Шлях ОДИН: друга копія цієї логіки в
+    // OnKeyPress меню набирала б цифру двічі там, де спрацювали б обидва.
+    void OnPinKey(int key)
+    {
+        // Код набирається лише поки відкритий екран коду -- і не на
+        // запечатаному приладі: там пад схований (PaintSealed), бо коду
+        // ніхто не знає, і клавіатура не мусить набирати того, чого не
+        // набирає миша.
+        if (m_PinMode == "" || m_Sealed)
+            return;
+
+        // ТА САМА ДОВЖИНА, ЩО В ПАДА Й У КРАПКАХ (ТЗ-5 R-B3.3). Тут
+        // лишалася четвірка літералом, і з профілем на шість цифр клавіатура
+        // спинялась на четвертій: пад малював шість рисок, мишею шість цифр
+        // набиралось, а Enter слав чотири -- і сервер відмовляв за довжиною
+        // (OZ_PDA_Base.PinShaped). Підказка STR_OZ_PIN_HINT кличе саме на
+        // клавіатуру.
+        string digit = KeyDigit(key);
+        if (digit != "")
         {
-            // ТА САМА ДОВЖИНА, ЩО В ПАДА Й У КРАПКАХ (ТЗ-5 R-B3.3). Тут
-            // лишалася четвірка літералом, і з профілем на шість цифр
-            // клавіатура спинялась на четвертій: пад малював шість рисок,
-            // мишею шість цифр набиралось, а Enter слав чотири -- і сервер
-            // відмовляв за довжиною (OZ_PDA_Base.PinShaped). На запечатаному
-            // приладі цей екран єдиний, а підказка STR_OZ_PIN_HINT кличе
-            // саме на клавіатуру.
-            if (key >= KeyCode.KC_0 && key <= KeyCode.KC_9 && m_PinBuffer.Length() < m_PinLength)
+            if (m_PinBuffer.Length() < PadLength())
             {
-                m_PinBuffer += (key - KeyCode.KC_0).ToString();
+                m_PinBuffer += digit;
                 PaintPinDots();
-                return true;
             }
-
-            if (key == KeyCode.KC_BACK && m_PinBuffer.Length() > 0)
-            {
-                m_PinBuffer = m_PinBuffer.Substring(0, m_PinBuffer.Length() - 1);
-                PaintPinDots();
-                return true;
-            }
-
-            if (key == KeyCode.KC_RETURN && m_PinBuffer.Length() > 0)
-            {
-                PinConfirm();
-                return true;
-            }
+            return;
         }
 
-        return super.OnKeyPress(w, x, y, key);
+        if (key == KeyCode.KC_BACK && m_PinBuffer.Length() > 0)
+        {
+            m_PinBuffer = m_PinBuffer.Substring(0, m_PinBuffer.Length() - 1);
+            PaintPinDots();
+            return;
+        }
+
+        // Enter цифрового блоку -- той самий Enter: хто набирає код
+        // праворуч, підтверджує там само.
+        bool enter = false;
+        if (key == KeyCode.KC_RETURN || key == KeyCode.KC_NUMPADENTER)
+            enter = true;
+        if (!enter)
+            return;
+
+        // Відмітка -- на КОЖЕН Enter, і з порожнім буфером теж: луна від
+        // рушія (див. EnterEcho) приходить однаково.
+        m_KeyEnterAtMs = GetGame().GetTime();
+        if (m_PinBuffer.Length() > 0)
+            PinConfirm();
+    }
+
+    // ЛУНА ENTER. Рушій на Enter сам «клікає» кнопку, над якою стоїть
+    // курсор, -- зміряно на стенді 2026-09-28: порожній пад, один Enter без
+    // жодної цифри, і в буфері з'явилась «5»: меню відкривається з курсором
+    // посередині, а посередині пада саме Key5. Разом із підтвердженням з
+    // клавіатури це давало зайву цифру на наступному кроці («повторіть код»
+    // починався з «5»), над OK -- другу спробу того самого коду (одна
+    // помилка рахувалась би двічі), а над FACTORY RESET -- скидання. Тож
+    // поки відкритий екран коду, клік одразу після Enter -- це луна, а не
+    // рука гравця.
+    private static const int ENTER_ECHO_MS = 500;
+    private int m_KeyEnterAtMs = -1;
+
+    private bool EnterEcho()
+    {
+        if (m_KeyEnterAtMs < 0)
+            return false;
+        return GetGame().GetTime() - m_KeyEnterAtMs < ENTER_ECHO_MS;
+    }
+
+    // Цифра клавіші або порожньо.
+    //
+    // ПОІМЕННО, а не відніманням. У KeyCode (1_core/proto/ensystem.c) нуль
+    // стоїть ПІСЛЯ дев'ятки -- KC_1..KC_9, а тоді KC_0, -- тож умова
+    // «key >= KC_0 && key <= KC_9» не справджувалась ніколи, і набір коду з
+    // клавіатури був мертвий; «key - KC_0» до того ж давав би не ту цифру.
+    // Цифровий блок -- окремий ряд (KC_NUMPAD7..9, 4..6, 1..3, 0 упереміш зі
+    // знаками), і його теж треба назвати.
+    private string KeyDigit(int key)
+    {
+        if (key == KeyCode.KC_1 || key == KeyCode.KC_NUMPAD1)
+            return "1";
+        if (key == KeyCode.KC_2 || key == KeyCode.KC_NUMPAD2)
+            return "2";
+        if (key == KeyCode.KC_3 || key == KeyCode.KC_NUMPAD3)
+            return "3";
+        if (key == KeyCode.KC_4 || key == KeyCode.KC_NUMPAD4)
+            return "4";
+        if (key == KeyCode.KC_5 || key == KeyCode.KC_NUMPAD5)
+            return "5";
+        if (key == KeyCode.KC_6 || key == KeyCode.KC_NUMPAD6)
+            return "6";
+        if (key == KeyCode.KC_7 || key == KeyCode.KC_NUMPAD7)
+            return "7";
+        if (key == KeyCode.KC_8 || key == KeyCode.KC_NUMPAD8)
+            return "8";
+        if (key == KeyCode.KC_9 || key == KeyCode.KC_NUMPAD9)
+            return "9";
+        if (key == KeyCode.KC_0 || key == KeyCode.KC_NUMPAD0)
+            return "0";
+        return "";
     }
 
     // Зміна в полі вводу -- сторінці, яка його тримає. Досі сторінки не
@@ -1442,6 +1792,11 @@ class OZ_PdaMenu : UIScriptedMenu
 
     override bool OnClick(Widget w, int x, int y, int button)
     {
+        // Першим рядком, до будь-якої кнопки: луна Enter влучає в те, що під
+        // курсором, -- зокрема в FACTORY RESET екрана коду (див. EnterEcho).
+        if (m_PinMode != "" && EnterEcho())
+            return true;
+
         if (w == m_BtnClose)
         {
             Close();
