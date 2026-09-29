@@ -340,12 +340,20 @@ class OZ_PdaPageDevice : OZ_PdaPage
             }
             else
             {
-                // Частковий імпорт -- НЕ "Done.": скільки взято проти
-                // скільки лежало, і різниця досі на чипі.
+                // Імпорт -- УСЕ АБО НІЧОГО (OZ_PdaHandlerDevice.CarrierImport):
+                // те, що не влазить, приходить відмовою вище, а не частковим
+                // успіхом. Тож «взято менше, ніж на чипі» означає одне: решта
+                // вже була в приладі, і дублі вдруге не лягли.
                 OZ_CarrierTaken t = new OZ_CarrierTaken();
                 string terr;
                 if (JsonFileLoader<OZ_CarrierTaken>.LoadData(json, t, terr) && t && t.Taken < t.Total)
-                    SetHintSticky("CarrierText", "#STR_OZ_DEV_CAR_PART  " + t.Taken.ToString() + "/" + t.Total.ToString());
+                {
+                    int got = t.Taken;
+                    int all = t.Total;
+                    string part = Widget.TranslateString("#STR_OZ_DEV_CAR_PART") + "  " + got.ToString() + "/" + all.ToString();
+                    part += " -- " + Widget.TranslateString("#STR_OZ_DEV_CAR_DUPS");
+                    SetHintSticky("CarrierText", part);
+                }
                 else
                     SetHintSticky("CarrierText", "#STR_OZ_DEV_CARRIER_DONE");
             }

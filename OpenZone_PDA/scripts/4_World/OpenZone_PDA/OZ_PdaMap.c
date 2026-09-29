@@ -720,21 +720,50 @@ class OZ_PdaHandlerMap : OZ_PageHandler
     // ЗАПИСАТИ нитку на чип, а імпорт сторінки приладу знав тільки мітки й
     // записки. Записаний маршрут на чужому КПК не відкривався нічим. Тепер
     // IMPORT сторінки приладу забирає й маршрут (OZ_PdaHandlerDevice
-    // .CarrierImport) -- тією самою дорогою, що й ця операція.
+    // .CarrierImport) -- тією самою дорогою, що й ця операція: нитку збирає
+    // BuildRoute, а пише кожен сам, коли знає, що ляже все.
     static bool TakeRoute(OZ_PDA_Base pda, OZ_DataCarrier_Base c, out int points, out string error)
     {
         points = 0;
 
+        OZ_MarkerList route = BuildRoute(pda, c, error);
+        if (!route)
+            return false;
+
+        // Прилад, у якого маршруту ще немає, купує під нього ячейку; той, у
+        // кого вже є, платить нуль -- імпорт замінює маршрут, а не додає
+        // другий. Порівнювати ДОВЖИНУ маршруту зі стелею МІТОК було подвійною
+        // помилкою: і рід не той, і ціна не та.
+        if (pda.OZ_RouteJson() == "" && pda.OZ_Free() < 1)
+        {
+            error = "STR_OZ_ERR_MARKERS_FULL";
+            return false;
+        }
+
+        if (!FlushRoute(pda, route, error))
+            return false;
+
+        points = route.Items.Count();
+        error = "";
+        return true;
+    }
+
+    // ЗІБРАТИ МАРШРУТ ІЗ НОСІЯ, НІЧОГО НЕ ЗАПИСУЮЧИ. Null -- відмова, і
+    // причина в error. Ячейку під нитку тут не питаємо: скільки вона коштує,
+    // вирішує той, хто пише (route_take -- одну або нуль, гуртовий імпорт --
+    // разом з усім іншим, що ляже з того самого чипа).
+    static OZ_MarkerList BuildRoute(OZ_PDA_Base pda, OZ_DataCarrier_Base c, out string error)
+    {
         if (!pda || !c)
         {
             error = "STR_OZ_ERR_NO_DEVICE";
-            return false;
+            return null;
         }
 
         if (c.OZ_Route() == "")
         {
             error = "STR_OZ_ERR_ROUTE_EMPTY";
-            return false;
+            return null;
         }
 
         OZ_MarkerList incoming = new OZ_MarkerList();
@@ -742,7 +771,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Route(), incoming, err) || !incoming || !incoming.Items)
         {
             error = "STR_OZ_ERR_PDA_INTERNAL";
-            return false;
+            return null;
         }
 
         // Копія ДО наступних виділень: елементи виділив серіалізатор.
@@ -754,17 +783,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (!prof)
         {
             error = "STR_OZ_ERR_NO_PROFILE";
-            return false;
-        }
-
-        // Прилад, у якого маршруту ще немає, купує під нього ячейку; той, у
-        // кого вже є, платить нуль -- імпорт замінює маршрут, а не додає
-        // другий. Порівнювати ДОВЖИНУ маршруту зі стелею МІТОК було подвійною
-        // помилкою: і рід не той, і ціна не та.
-        if (pda.OZ_RouteJson() == "" && pda.OZ_Free() < 1)
-        {
-            error = "STR_OZ_ERR_MARKERS_FULL";
-            return false;
+            return null;
         }
 
         // НИТКУ ЗБИРАЄМО ЗАНОВО, а не копіюємо рядок чипа в пам'ять приладу.
@@ -787,7 +806,7 @@ class OZ_PdaHandlerMap : OZ_PageHandler
             if (route.Items.Count() >= cap)
             {
                 error = "STR_OZ_ERR_ROUTE_FULL";
-                return false;
+                return null;
             }
 
             // "#r", а не "#c": лічильник носія (OZ_PdaHandlerDevice) карбує
@@ -806,15 +825,11 @@ class OZ_PdaHandlerMap : OZ_PageHandler
         if (route.Items.Count() == 0)
         {
             error = "STR_OZ_ERR_ROUTE_EMPTY";
-            return false;
+            return null;
         }
 
-        if (!FlushRoute(pda, route, error))
-            return false;
-
-        points = route.Items.Count();
         error = "";
-        return true;
+        return route;
     }
 
     // Додати мітку ВІД ІМЕНІ ІНШОЇ СТОРІНКИ -- тією самою дорогою, що й

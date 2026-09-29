@@ -321,6 +321,19 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
         return outJson;
     }
 
+    // ГУРТОВИЙ ІМПОРТ -- УСЕ АБО НІЧОГО (рішення власника 2026-09-29).
+    //
+    // Раніше кожна секція чипа лягала сама по собі й поки влазила: мітки до
+    // стелі, маршрут окремо, записки до стелі, а бита книжка записок на чипі
+    // лишала вже покладені мітки. Гравець бачив «імпортовано 17/30» і сам
+    // шукав, чого не дісталось. Тепер спершу розбираємо ВСЕ -- секції чипа,
+    // книжки приладу, нитку маршруту -- і рахуємо, скільки нових ячеек це
+    // коштує. Не влазить -- відмова, і в приладі не міняється нічого. Влазить
+    // -- усе серіалізуємо ДО першого запису й кладемо разом.
+    //
+    // Дублі (та сама мітка чи записка вже в приладі) ячеек не коштують і
+    // вдруге не лягають, тож «взято» буває меншим за «на чипі» й при успіху:
+    // клієнт тоді каже, що решта вже була в приладі.
     private string CarrierImport(PlayerIdentity sender, out bool ok, out string error)
     {
         ok = false;
@@ -335,75 +348,103 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
             return "";
         }
 
-        // Спершу МІТКИ -- вони локальні й лягають одразу; записки їдуть
-        // слідом через міст, і їхній результат приїде окремою відповіддю.
-        int marksTaken = -1;
-        int marksTotal = -1;
+        bool hasMarks = c.OZ_Marks() != "";
+        bool hasNotes = c.OZ_Notes() != "";
+        bool hasRoute = c.OZ_Route() != "";
 
-        if (c.OZ_Marks() != "")
+        // Чип записаний, але не тим, що бере цей імпорт (скажімо, лише
+        // книжкою частот рації -- її забирає своя сторінка).
+        if (!hasMarks && !hasNotes && !hasRoute)
         {
-            OZ_MarkerList incoming = new OZ_MarkerList();
-            string err;
-            if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), incoming, err) || !incoming || !incoming.Items)
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+
+        OZ_PDA_Base pda = DeviceOf(sender, error);
+        if (!pda)
+            return "";
+
+        string err;
+
+        // ---- 1. Секції чипа: розбір, жодного запису.
+        //
+        // Копії ДО наступних розборів: корінь тут скриптовий, а Items і кожен
+        // їхній елемент виділив серіалізатор -- і читаються вони нижче, вже
+        // після розбору власних книжок приладу.
+        OZ_MarkerList inMarks;
+        if (hasMarks)
+        {
+            OZ_MarkerList pm = new OZ_MarkerList();
+            if (!JsonFileLoader<OZ_MarkerList>.LoadData(c.OZ_Marks(), pm, err) || !pm || !pm.Items)
             {
                 error = "STR_OZ_ERR_PDA_INTERNAL";
                 return "";
             }
+            inMarks = pm.Copy();
+        }
 
-            // Копія ДО другого розбору: корінь тут скриптовий, а от Items і
-            // кожен його елемент виділив серіалізатор -- і читаються вони
-            // нижче, вже після розбору власного списку приладу.
-            incoming = incoming.Copy();
-
-            OZ_PDA_Base pda = DeviceOf(sender, error);
-            if (!pda)
+        OZ_NoteBook inNotes;
+        if (hasNotes)
+        {
+            OZ_NoteBook pn = new OZ_NoteBook();
+            if (!JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), pn, err) || !pn || !pn.Notes)
+            {
+                error = "STR_OZ_ERR_PDA_INTERNAL";
                 return "";
+            }
+            inNotes = pn.Copy();
+        }
 
-            // Нечитну пам'ять міток НЕ ПЕРЕЗАПИСУЄМО (див. OZ_PdaMarks): тут
-            // стояв той самий «порожній список замість нечитного», і імпорт
-            // клав мітки чипа поверх усього, що лежало в приладі.
+        // Нитка -- ОДИН запис, що ЗАМІНЮЄ маршрут приладу, як і в route_take:
+        // збирає її та сама дорога (OZ_PdaHandlerMap.BuildRoute), а пишемо
+        // нижче, разом з усім.
+        OZ_MarkerList inRoute;
+        if (hasRoute)
+        {
+            inRoute = OZ_PdaHandlerMap.BuildRoute(pda, c, error);
+            if (!inRoute)
+                return "";
+        }
+
+        // ---- 2. Книжки приладу. Нечитну НЕ ПЕРЕЗАПИСУЄМО (див. OZ_PdaMarks,
+        // OZ_PdaNoteBook): імпорт клав би чип поверх усього, що там лежало.
+        OZ_MarkerList mine;
+        if (hasMarks)
+        {
             bool marksBad;
-            OZ_MarkerList mine = OZ_PdaMarks.Load(pda, marksBad);
+            mine = OZ_PdaMarks.Load(pda, marksBad);
             if (marksBad)
             {
                 error = "STR_OZ_ERR_MARKS_CORRUPT";
                 return "";
             }
+        }
 
-            // Стеля -- ПАМ'ЯТЬ ПРИЛАДУ, спільна з нотатками, маршрутом і
-            // розділами чужих модулів: вільні ячейки плюс ті, що вже зайняли
-            // власні мітки (їх імпорт не додає, а доповнює).
-            int limit = pda.OZ_Free() + mine.Items.Count();
-
-            // limit <= 0 -- зіпсований конфіг. Сторінка карти в цьому стані
-            // відмовляє СТАВИТИ, тож імпорт поводиться так само, а не читає
-            // той самий нуль як «безліміт». Але ЧЕСНА відмова доречна лише
-            // коли на чипі самі мітки: змішаний чип мусить донести записки,
-            // а мітки тоді просто «0 з N».
-            if (limit <= 0 || mine.Items.Count() >= limit)
+        OZ_NoteBook mineN;
+        if (hasNotes)
+        {
+            bool notesBad;
+            mineN = OZ_PdaNoteBook.Load(pda, notesBad);
+            if (notesBad)
             {
-                if (c.OZ_Notes() == "")
-                {
-                    error = "STR_OZ_ERR_MARKERS_FULL";
-                    return "";
-                }
-                marksTaken = 0;
-                marksTotal = incoming.Items.Count();
+                error = "STR_OZ_ERR_NOTES_CORRUPT";
+                return "";
             }
-            else
-            {
+        }
 
-            int total = incoming.Items.Count();
-            int taken = 0;
-            for (int i = 0; i < total; i++)
+        // ---- 3. Що справді нове. Зливаємо в ЛОКАЛЬНІ копії книжок: до
+        // рішення про місце прилад не бачить нічого.
+        int seenMarks = 0;
+        int addMarks  = 0;
+        if (hasMarks)
+        {
+            for (int i = 0; i < inMarks.Items.Count(); i++)
             {
-                if (mine.Items.Count() >= limit)
-                    break;
-
-                OZ_MapMarker m = incoming.Items[i];
+                OZ_MapMarker m = inMarks.Items[i];
                 // Чужий чип -- чужий JSON: масив може нести null-елементи.
                 if (!m)
                     continue;
+                seenMarks++;
 
                 // Той самий санітар, що й у marker_add: чуже походження --
                 // не привілей, а межі в чипа ніхто не питав.
@@ -411,9 +452,10 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 m.Desc = OZ_Text.Clip(m.Desc, OZ_PdaTune.MarkerDescMax());
 
                 // Дедуп за ВМІСТОМ: та сама назва в тій самій точці вже на
-                // пристрої -- не дублюємо. Без цього резервна копія (записав
-                // усі мітки на чип, потім імпортував) плодила б другий
-                // комплект, а цикл експорт->імпорт множив мітку щоразу.
+                // пристрої (чи вже відібрана з цього ж чипа) -- не дублюємо.
+                // Без цього резервна копія (записав усі мітки на чип, потім
+                // імпортував) плодила б другий комплект, а цикл
+                // експорт->імпорт множив мітку щоразу.
                 bool dup = false;
                 for (int d = 0; d < mine.Items.Count(); d++)
                 {
@@ -431,118 +473,20 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 s_CarrierSeq++;
                 m.Id = OZ_Time.NowUtc() + "#c" + s_CarrierSeq.ToString();
                 mine.Items.Insert(m);
-                taken++;
-            }
-
-            string outJson;
-            if (!JsonFileLoader<OZ_MarkerList>.MakeData(mine, outJson, err, false))
-            {
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            pda.OZ_SetMarkersJson(outJson);
-            OZ_Log.Info("carrier: imported " + taken.ToString() + "/" + total.ToString() + " marker(s) for " + sender.GetPlainId());
-
-            marksTaken = taken;
-            marksTotal = total;
+                addMarks++;
             }
         }
 
-        // МАРШРУТ -- третя секція чипа, і досі її не брав жоден імпорт:
-        // route_take не слав жоден клієнт, тож записана нитка на чужому КПК
-        // не відкривалась нічим. Нитка -- ОДИН запис у підсумку (вона й
-        // коштує одну ячейку), і вона ЗАМІНЮЄ маршрут приладу, а не
-        // доповнює його -- як і в route_take, тією самою дорогою.
-        if (c.OZ_Route() != "")
+        int seenNotes = 0;
+        int addNotes  = 0;
+        if (hasNotes)
         {
-            OZ_PDA_Base pdaR = DeviceOf(sender, error);
-            if (!pdaR)
-                return "";
-
-            int routePoints;
-            string routeErr;
-            bool routeOk = OZ_PdaHandlerMap.TakeRoute(pdaR, c, routePoints, routeErr);
-
-            // Лише маршрут на чипі й він не ліг -- кажемо чому, а не «0 з 1».
-            if (!routeOk && c.OZ_Marks() == "" && c.OZ_Notes() == "")
+            for (int ni = 0; ni < inNotes.Notes.Count(); ni++)
             {
-                error = routeErr;
-                return "";
-            }
-
-            if (marksTotal < 0)
-            {
-                marksTaken = 0;
-                marksTotal = 0;
-            }
-            marksTotal += 1;
-            if (routeOk)
-            {
-                marksTaken += 1;
-                OZ_Log.Info("carrier: imported a route of " + routePoints.ToString() + " point(s) for " + sender.GetPlainId());
-            }
-        }
-
-        if (c.OZ_Notes() != "")
-        {
-            OZ_NoteBook book = new OZ_NoteBook();
-            string err2;
-            if (!JsonFileLoader<OZ_NoteBook>.LoadData(c.OZ_Notes(), book, err2) || !book || !book.Notes)
-            {
-                // Мітки вже ЛЯГЛИ. Бита книжка чипа не має права стерти цей
-                // факт: чесно віддаємо підсумок міток, записки лишаються на
-                // чипі на потім.
-                if (marksTotal >= 0)
-                    return MarksOnlyTaken(marksTaken, marksTotal, ok, error);
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            // Копія ДО другого розбору: Notes і кожна записка в ньому --
-            // те, що виділив серіалізатор, а читаються вони нижче, вже
-            // після розбору власної книжки приладу.
-            book = book.Copy();
-
-            // Записки -- пам'ять ПРИСТРОЮ: книжка чипа зливається в книжку
-            // приладу тут же, синхронно. Межі й дедап ті самі, що в міток,
-            // а підсумок один на обидві ноги -- одна op, одна цифра.
-            OZ_PDA_Base pdaN = DeviceOf(sender, error);
-            if (!pdaN)
-                return "";
-
-            // Нечитну книжку приладу НЕ ПЕРЕЗАПИСУЄМО (див. OZ_PdaNoteBook).
-            // Те, що вже лягло (мітки, маршрут), лягло -- кажемо про нього.
-            bool notesBad;
-            OZ_NoteBook mineN = OZ_PdaNoteBook.Load(pdaN, notesBad);
-            if (notesBad)
-            {
-                if (marksTotal >= 0)
-                    return MarksOnlyTaken(marksTaken, marksTotal, ok, error);
-                error = "STR_OZ_ERR_NOTES_CORRUPT";
-                return "";
-            }
-
-            // Та сама спільна пам'ять -- див. вище про мітки.
-            //
-            // ПІДСТАВНОГО ПОТОЛКА ТУТ БІЛЬШЕ НЕМАЄ. Стояло
-            // `if (limitN <= 0) limitN = OZ_PdaTune.NotesMax();` -- тобто
-            // прилад, у якого ВЖЕ НЕМАЄ вільних ячейок, отримував дозвіл
-            // дописати ще стільки записок, скільки каже налаштування. Нуль
-            // тут означає «повний», а не «невідомо».
-            int limitN = pdaN.OZ_Free() + mineN.Notes.Count();
-
-            int totalN = book.Notes.Count();
-            int takenN = 0;
-            for (int ni = 0; ni < totalN; ni++)
-            {
-                if (mineN.Notes.Count() >= limitN)
-                    break;
-
-                OZ_Note nn = book.Notes[ni];
-                // Чужий чип -- чужий JSON: масив може нести null-елементи.
+                OZ_Note nn = inNotes.Notes[ni];
                 if (!nn)
                     continue;
+                seenNotes++;
 
                 string tN = OZ_Text.Clip(nn.Title, OZ_PdaTune.NoteTitleMax());
                 string bN = OZ_Text.Clip(nn.Body, OZ_PdaTune.NoteBodyMax());
@@ -560,79 +504,90 @@ class OZ_PdaHandlerDevice : OZ_PageHandler
                 if (dupN)
                     continue;
 
-                OZ_Note freshI = new OZ_Note();
+                OZ_Note fresh = new OZ_Note();
                 s_CarrierSeq++;
-                freshI.Id        = OZ_Time.NowUtc() + "#cn" + s_CarrierSeq.ToString();
-                freshI.Title     = tN;
-                freshI.Body      = bN;
-                freshI.CreatedAt = OZ_Time.NowUtc();
-                freshI.EditedAt  = freshI.CreatedAt;
-                mineN.Notes.Insert(freshI);
-                takenN++;
+                fresh.Id        = OZ_Time.NowUtc() + "#cn" + s_CarrierSeq.ToString();
+                fresh.Title     = tN;
+                fresh.Body      = bN;
+                fresh.CreatedAt = OZ_Time.NowUtc();
+                fresh.EditedAt  = fresh.CreatedAt;
+                mineN.Notes.Insert(fresh);
+                addNotes++;
             }
-
-            string outN;
-            if (!JsonFileLoader<OZ_NoteBook>.MakeData(mineN, outN, err2, false))
-            {
-                if (marksTotal >= 0)
-                    return MarksOnlyTaken(marksTaken, marksTotal, ok, error);
-                error = "STR_OZ_ERR_PDA_INTERNAL";
-                return "";
-            }
-
-            pdaN.OZ_SetNotesJson(outN);
-            OZ_Log.Info("carrier: imported " + takenN.ToString() + "/" + totalN.ToString() + " note(s) for " + sender.GetPlainId());
-
-            OZ_CarrierTaken tAll = new OZ_CarrierTaken();
-            tAll.Taken = takenN;
-            tAll.Total = totalN;
-            if (marksTotal > 0)
-            {
-                tAll.Taken += marksTaken;
-                tAll.Total += marksTotal;
-            }
-
-            string tjAll;
-            if (!JsonFileLoader<OZ_CarrierTaken>.MakeData(tAll, tjAll, err2, false))
-                tjAll = "";
-
-            ok = true;
-            error = "";
-            return tjAll;
         }
 
-        // Лише мітки: відповідь синхронна.
-        if (marksTotal >= 0)
+        // ---- 4. Чи влазить УСЕ. Пам'ять спільна для міток, записок,
+        // маршруту й розділів чужих модулів -- OZ_Free рахує їх усі. Нитка
+        // коштує ячейку, лише коли маршруту в приладі ще немає: імпорт його
+        // замінює, а не додає другий.
+        int routeCells = 0;
+        if (hasRoute && pda.OZ_RouteJson() == "")
+            routeCells = 1;
+
+        int need = addMarks + addNotes + routeCells;
+        int room = pda.OZ_Free();
+        if (need > room)
         {
-            OZ_CarrierTaken t = new OZ_CarrierTaken();
-            t.Taken = marksTaken;
-            t.Total = marksTotal;
-
-            string tjm;
-            string terr;
-            if (!JsonFileLoader<OZ_CarrierTaken>.MakeData(t, tjm, terr, false))
-                tjm = "";
-
-            ok = true;
-            error = "";
-            return tjm;
+            string why = "carrier: import refused for " + sender.GetPlainId() + " - needs ";
+            why += need.ToString() + " cell(s), " + room.ToString() + " free; nothing written";
+            OZ_Log.Info(why);
+            error = "STR_OZ_ERR_IMPORT_NO_ROOM";
+            return "";
         }
 
-        error = "STR_OZ_ERR_PDA_INTERNAL";
-        return "";
-    }
+        // ---- 5. Серіалізація ВСЬОГО до першого запису: збій на третій
+        // секції не має лишити в приладі дві перші.
+        string marksJson;
+        if (addMarks > 0 && !JsonFileLoader<OZ_MarkerList>.MakeData(mine, marksJson, err, false))
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
 
-    // Підсумок «лише мітки» для гуртового імпорту, коли нотаткова нога
-    // відмовила синхронно: зроблене вже зроблене, і відповідь каже саме це.
-    private string MarksOnlyTaken(int taken, int total, out bool ok, out string error)
-    {
+        string notesJson;
+        if (addNotes > 0 && !JsonFileLoader<OZ_NoteBook>.MakeData(mineN, notesJson, err, false))
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+
+        string routeJson;
+        if (hasRoute && !JsonFileLoader<OZ_MarkerList>.MakeData(inRoute, routeJson, err, false))
+        {
+            error = "STR_OZ_ERR_PDA_INTERNAL";
+            return "";
+        }
+
+        // ---- 6. Запис -- разом, і лише те, що змінилось.
+        if (addMarks > 0)
+            pda.OZ_SetMarkersJson(marksJson);
+        if (addNotes > 0)
+            pda.OZ_SetNotesJson(notesJson);
+        if (hasRoute)
+            pda.OZ_SetRouteJson(routeJson);
+
+        // ---- 7. Підсумок: одна op, одна цифра на всі секції. Маршрут у
+        // підсумку -- один запис, як і в пам'яті.
+        int taken = addMarks + addNotes;
+        int total = seenMarks + seenNotes;
+        if (hasRoute)
+        {
+            taken += 1;
+            total += 1;
+        }
+
+        string said = "carrier: imported " + addMarks.ToString() + " marker(s), " + addNotes.ToString() + " note(s)";
+        if (hasRoute)
+            said += " and a route of " + inRoute.Items.Count().ToString() + " point(s)";
+        said += ", " + taken.ToString() + "/" + total.ToString() + " for " + sender.GetPlainId();
+        OZ_Log.Info(said);
+
         OZ_CarrierTaken t = new OZ_CarrierTaken();
         t.Taken = taken;
         t.Total = total;
 
         string tj;
-        string terr;
-        if (!JsonFileLoader<OZ_CarrierTaken>.MakeData(t, tj, terr, false))
+        if (!JsonFileLoader<OZ_CarrierTaken>.MakeData(t, tj, err, false))
             tj = "";
 
         ok = true;
